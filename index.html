@@ -4580,8 +4580,13 @@ tick();
  const mobile=()=>window.matchMedia('(max-width: 600px)').matches;
  const top=document.getElementById('top');
  function syncHeader(){if(!mobile())return;document.documentElement.style.setProperty('--ir-mobile-header-height',Math.ceil(top.getBoundingClientRect().height)+'px');}
- if(window.ResizeObserver){new ResizeObserver(syncHeader).observe(top);}
- window.addEventListener('resize',syncHeader);
+ // Keep the top padding stable while Safari's address bar expands/collapses on scroll.
+ // Recalculate only when the layout WIDTH changes, not on viewport-height changes.
+ let lastWidth=document.documentElement.clientWidth;
+ window.addEventListener('resize',function(){
+  const width=document.documentElement.clientWidth;
+  if(width!==lastWidth){lastWidth=width;syncHeader();}
+ });
  document.addEventListener('click',function(event){
   if(!mobile())return;
   if(event.target.closest('#tabs button, #sub button')){
