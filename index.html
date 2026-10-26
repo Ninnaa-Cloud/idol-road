@@ -206,7 +206,7 @@ function idolXDismissedAccount(account){
  if(!match)return false;
  return (state.groups||[]).some(g=>(g.members||[]).some(m=>String(m.id)===match[1]&&m.idolRoadDismissed));
 }
-function idolXPosts(){return state.idolXPosts??=[]}
+function idolXPosts(){state.idolXPosts=(state.idolXPosts||[]).filter(p=>!idolXDismissedAccount(p.account));return state.idolXPosts}
 function idolXAdd(account,name,handle,body,photoId=null,repostOf=null){if(idolXDismissedAccount(account))return null;const p={id:'xp'+Date.now()+'_'+Math.random().toString(36).slice(2,9),account,name,handle,body,date:today(),photoId,repostOf,likes:0};idolXPosts().unshift(p);return p}
 function idolXGroupIdPart(g){const name=String(g.name||'').trim();return idolXRomanPart(/^[A-Za-z0-9\s　]+$/.test(name)&&/[A-Za-z]/.test(name)?name:(g.nameReading||name))||'group'}
 function idolXHashName(v){return String(v||'').replace(/[\s\u3000]+/g,'')}
@@ -2660,11 +2660,13 @@ for(const g of groups)for(const m of g.members||[]){
 const cutoff=new Date(day+'T00:00:00');cutoff.setDate(cutoff.getDate()-365);db.posts=db.posts.filter(p=>{const d=new Date(String(p.date)+'T00:00:00');return !Number.isNaN(d.getTime())&&d>=cutoff});}
 
 function daily(){
+ // Purge legacy member posts from existing saves, not only posts created after dismissal.
+ state.idolXPosts=(state.idolXPosts||[]).filter(p=>!idolXDismissedAccount(p.account));
  update();
  xCommunityDaily();
  processMemberBuzzAwards();
  for(const g of state.groups||[])for(const m of g.members||[]){
-  if(!m||m.id==null)continue;
+  if(!m||m.id==null||m.idolRoadDismissed)continue;
   const type=templates[m.mbti]||templates.INFP,rank=gradeIndex(score(m,'SNS'));
   const postChance=clamp(monthlyPost[rank]+type.postOffset,0,100)/100;
   if(Math.random()>=postChance)continue;
@@ -2677,6 +2679,7 @@ function daily(){
   for(let i=0;i<total;i++){
    const isPhoto=i===photoSlot;
    const post=idolXAdd('member:'+m.id,m.stageName||m.name,m.xHandle||idolXHandleMember(m,g),memberText(m,isPhoto?'photo':'normal'),isPhoto?m.profilePhotoId:null);
+   if(!post)continue;
    const target=reactions(m,isPhoto);
    post.memberAutoReaction={...target,start:stamp()};
    post.memberAutoPhoto=isPhoto;
@@ -2689,7 +2692,7 @@ const previousAddDay=addDay;
 addDay=function(){previousAddDay();daily()};
 // Recalculate the 24-hour reaction curve when the existing X view reads posts.
 const previousGetPosts=window.__idolRoadXGetPosts;
-window.__idolRoadXGetPosts=function(){update();return previousGetPosts()};
+window.__idolRoadXGetPosts=function(){update();return (previousGetPosts()||[]).filter(p=>!idolXDismissedAccount(p.account))};
 window.__idolRoadXCommunity=()=>{xCommunityDaily();return xCommunity().posts};window.__idolRoadXComments=xBuildComments;window.__idolRoadXCommunityDaily=xCommunityDaily;
 })();
 </script>
@@ -3883,7 +3886,7 @@ function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismisse
  const opening=mb.startsWith('I')?`お疲れさまです。Xで私の${topic}が広まっているのを見ました。少しお話ししてもよろしいでしょうか。`:mb.includes('F')?`すみません、Xで私の${topic}が出ていて…。どうしたらいいか不安です。少しお話しできますか？`:`Xで私の${topic}が取り上げられていることを確認しました。状況を説明したいので、お時間いただけますか？`;
  addMemberLine(inc,opening);save();
 }
-function daily(){const day=date();if(state.idolRoadIncidentLastDay===day)return;state.idolRoadIncidentLastDay=day;
+function ensureResumeNotices(){const day=date();
  // Finish an internal suspension on its actual date; the duration is never included in the public announcement.
  for(const {m} of members())if(m.idolRoadPauseUntil&&m.idolRoadPauseUntil<=day&&!m.idolRoadDismissed){
   m.idolRoadResumePending=true;
@@ -3893,6 +3896,12 @@ function daily(){const day=date();if(state.idolRoadIncidentLastDay===day)return;
   }
   /* 期間満了後も本人の活動休止は維持。プレイヤー承認まで復帰させない。 */
  }
+}
+function daily(){const day=date();
+ // Process overdue suspension notices even if this day was previously processed.
+ const alreadyProcessed=state.idolRoadIncidentLastDay===day;
+ ensureResumeNotices();
+ if(alreadyProcessed)return;state.idolRoadIncidentLastDay=day;
  for(const inc of incidentList())if(inc.status!=='完了'&&!inc.impactStarted)initialIncidentImpact(inc);
  for(const inc of incidentList())if(inc.status==='追加確認待ち'&&inc.followupDate&&date()>inc.followupDate){inc.status='事実確認中';inc.truth=inc.truth==='unconfirmed_false'?'unconfirmed_false':'unconfirmed_true';addMemberLine(inc,inc.truth==='unconfirmed_false'?'追加で確認しましたが、やはり記事の内容は事実ではありません。':'追加で確認した結果、記事の内容は事実だと認めます。');}
  naturalRecovery();
@@ -3919,7 +3928,7 @@ const oldAddDay=addDay;addDay=function(){const result=oldAddDay.apply(this,argum
 // When opening the existing X overlay, add the incident-management entry without changing tabs or page layout.
 /* X内の炎上管理画面は使用しない。事件の発生・X投稿処理は維持する。 */
 
-window.IDOL_ROAD_INCIDENTS={daily,trigger:triggerIncident,resume:(id)=>{
+window.IDOL_ROAD_INCIDENTS={daily,ensureResumeNotices,trigger:triggerIncident,resume:(id)=>{
  const inc=incidentList().find(x=>String(x.id)===String(id));if(!inc)return false;
  const m=IM(inc);if(!m||!m.idolRoadResumePending||m.idolRoadDismissed||!m.idolRoadPauseUntil||m.idolRoadPauseUntil>date())return false;
  m.idolRoadResumePending=false;m.idolRoadPauseUntil=null;m.activityStatus='活動中';
@@ -3998,7 +4007,7 @@ function personality(m,t){const mb=String(m.mbti||'');if(mb.startsWith('I'))retu
 function makeChoices(topic){return topic.slice(1).map((label,i)=>({label,outcome:i===0?'resolved':i===1?'resolved':'unresolved'}))}
 function activeEligible(topic,g){if(topic>=5&&topic<=9){return (g.members||[]).filter(housed).length>=2;}if(topic>=10&&topic<=14){return (state.idolRoadIncidents||[]).some(x=>String(x.groupId)===String(g.id)&&!x.closed&&x.decision!=='契約解除')}return true}
 function greeting(){for(const {id,m} of members()){const th=getThread(id);if(th.messages.length)continue;const texts=['はじめまして！これからよろしくお願いします！','今日からお世話になります。精一杯頑張ります！','よろしくお願いします！一生懸命頑張りますね。','これから色々学びたいです。よろしくお願いします！','今日からよろしくお願いします。少し緊張しています！'];add(id,personality(m,texts[store().serial%texts.length]),{kind:'greeting'})}}
-function syncIncidents(){const st=store();for(const x of state.idolRoadMemberLines||[]){const id=String(x.memberId);if(!members().some(m=>m.id===id))continue;const key=String(x.id||`${x.memberId}:${x.date}:${x.text}`);if(st.incidentIds.includes(key))continue;st.incidentIds.push(key);const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(x.incidentId));const opts=x.resumeRequest?[{label:'活動再開を承認する',resumeApproval:true}]:inc&&inc.status!=='完了'?inc.status==='処分待ち'?[{label:'活動休止（1ヶ月）',incidentDecision:'活動休止',months:1},{label:'活動休止（2ヶ月）',incidentDecision:'活動休止',months:2},{label:'活動休止（3ヶ月）',incidentDecision:'活動休止',months:3},{label:'契約解除',incidentDecision:'契約解除'},{label:'処分を見送る',incidentDecision:'処分を見送る'}]:inc.status==='事実確認中'?(inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}]):inc.status==='未確認'?[{label:'本人に事実確認する',incidentDecision:'事実確認中'}]:null:null;add(id,x.text,{kind:'incident',level:'incident',incidentId:x.incidentId,choices:opts,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey()});} }
+function syncIncidents(){window.IDOL_ROAD_INCIDENTS?.ensureResumeNotices?.();const st=store();for(const x of state.idolRoadMemberLines||[]){const id=String(x.memberId);if(!members().some(m=>m.id===id))continue;const key=String(x.id||`${x.memberId}:${x.date}:${x.text}`);if(st.incidentIds.includes(key))continue;st.incidentIds.push(key);const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(x.incidentId));const opts=x.resumeRequest?[{label:'活動再開を承認する',resumeApproval:true}]:inc&&inc.status!=='完了'?inc.status==='処分待ち'?[{label:'活動休止（1ヶ月）',incidentDecision:'活動休止',months:1},{label:'活動休止（2ヶ月）',incidentDecision:'活動休止',months:2},{label:'活動休止（3ヶ月）',incidentDecision:'活動休止',months:3},{label:'契約解除',incidentDecision:'契約解除'},{label:'処分を見送る',incidentDecision:'処分を見送る'}]:inc.status==='事実確認中'?(inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}]):inc.status==='未確認'?[{label:'本人に事実確認する',incidentDecision:'事実確認中'}]:null:null;add(id,x.text,{kind:'incident',level:'incident',incidentId:x.incidentId,choices:opts,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey()});} }
 // Major consultations — attached to the existing single member LINE thread.
 const majorCfg={motivation:{priority:4,cooldown:30},pressure:{priority:5,cooldown:30},conflict:{priority:3,cooldown:7},graduation:{priority:1,cooldown:90},leave:{priority:2,cooldown:7}};
 const randomBetween=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
@@ -4158,7 +4167,32 @@ function tick(){
    }
   }
   majorTick(cursor);
-  // Only approved major consultations are generated. Legacy light/medium random topics disabled.
+  // Natural light/medium consultations, in the existing unified member LINE.
+  // Do not backfill random conversations for days already passed in a save.
+  if(cursor===now){
+   const lineStore=store();lineStore.naturalConsultations??={};
+   for(const x of members()){
+    const m=x.m,th=getThread(x.id),history=lineStore.naturalConsultations;
+    if(m.activityStatus==='活動休止'||m.idolRoadPauseUntil||m.dismissed||m.isDismissed||m.contractTerminated||m.graduated||m.irGraduated)continue;
+    // One pending consultation per member, and never interrupt an incident/major consultation.
+    if(th.messages.some(msg=>!msg.answered&&msg.choices?.length))continue;
+    if(th.messages.some(msg=>msg.date===cursor&&msg.kind==='consult'))continue;
+    const last=history[x.id]||{};
+    const mediumReady=!last.medium||days(cursor,last.medium)>=18;
+    const lightReady=!last.light||days(cursor,last.light)>=7;
+    let level=null;
+    if(mediumReady&&Math.random()<0.035)level='medium';
+    else if(lightReady&&Math.random()<0.09)level='light';
+    if(!level)continue;
+    const topics=level==='medium'?mediumTopics:lightTopics;
+    const pool=topics.map((topic,i)=>({topic,i})).filter(v=>level!=='medium'||activeEligible(v.i,x.g));
+    if(!pool.length)continue;
+    const chosen=pool[Math.floor(Math.random()*pool.length)];
+    add(x.id,personality(m,chosen.topic[0]),{kind:'consult',level,choices:makeChoices(chosen.topic),date:cursor,topicId:chosen.i});
+    history[x.id]??={};history[x.id][level]=cursor;
+   }
+  }
+
 
  }
  st.lastDay=now;save();badge();
