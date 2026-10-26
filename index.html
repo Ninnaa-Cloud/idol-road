@@ -4599,4 +4599,27 @@ tick();
  });
  syncHeader();
 })();
-</script></body></html>
+</script>
+<script id="ir-opening-capital-repair-v90">
+(function(){
+  'use strict';
+  // Correct only the specific legacy opening-day save where the sole facility
+  // debit was applied to a zero balance. Do not alter established saves.
+  function repair(){
+    if(!state || !state.agency || state.year!==2026 || state.month!==4 || state.day!==1)return false;
+    const facility=state.irOfficeFacility||'room';
+    const fee=facility==='floor'?1000000:facility==='building'?0:500000;
+    if(!fee || Number(state.agencyFunds)!==-fee || !state.irFacilityBilled?.['2026-04'])return false;
+    const acc=state.accountingV1;
+    const entries=acc?.entries||[];
+    if(entries.length>1 || entries.some(e=>Number(e.amount)!==-fee || !String(e.description||'').includes('施設利用料')))return false;
+    // Opening capital is a starting balance, not operating revenue.
+    state.agencyFunds=50000000-fee;
+    if(acc)acc.lastFunds=state.agencyFunds;
+    save();
+    return true;
+  }
+  if(repair())render();
+})();
+</script>
+</body></html>
