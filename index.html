@@ -1847,14 +1847,14 @@ function report(x,i){
  if(window.IDOL_ROAD_MERCH)window.IDOL_ROAD_MERCH.liveSales(x,i,r);
  if(isExternal(x)&&r.financial){
   const gross=Number(r.financial.gross)||0,travelCost=Number(r.financial.travelCost)||0;
-  r.financial.venueCost=0;r.financial.net=gross-travelCost;
+  r.financial.venueCost=0;r.financial.net=gross-travelCost+(Number(r.financial.chekiRevenue)||0);
  }
  const stop=stopOf(x,i),joint=isExternal(x)||x.type==='joint';
  const f=Number.isFinite(Number(r.forecast))?Number(r.forecast):forecastOf(x,i),ownForecast=isExternal(x)?f:x.type==='joint'?Number(x.jointOwnForecast??f)||0:f;
  const own=joint?r.ownActual:r.actual,fin=r.financial,extra=r.cheki||{rows:[],total:0};
  let overlay=document.getElementById('idolLiveDayReport');if(!overlay){overlay=document.createElement('div');overlay.id='idolLiveDayReport';overlay.style.cssText='position:fixed;inset:0;z-index:9999;background:#000b;display:grid;place-items:center;padding:16px';document.body.append(overlay);}
  const financial=fin.kind==='external'?`<p>出演承諾時の条件：${esc(x.condition)}</p><p>出演条件による精算額：${yen(fin.gross)}</p><p>会場費：−${yen(fin.venueCost)}</p><p>交通費：−${yen(fin.travelCost)}</p>`:`<p>チケット収入：${yen(fin.ticketRevenue)}</p>${fin.kind==='hostedJoint'?`<p>招待グループ精算合計：−${yen(fin.guestPayments)}</p>${fin.guestDetails.map(g=>`<p>　${esc(g.groupName)}（${esc(g.condition)}・集客${g.tickets}人）：${yen(g.payout)}（主催からの支払）</p>`).join('')}`:''}<p>会場費：−${yen(fin.venueCost)}</p><p>交通費：−${yen(fin.travelCost)}</p>${fin.cancellationCosts?`<p>招待取消費用：−${yen(fin.cancellationCosts)}</p>`:''}`;
- overlay.innerHTML=`<div style="background:#1b2741;color:white;border:1px solid #7183a6;border-radius:16px;padding:22px;max-width:650px;width:100%;max-height:90vh;overflow:auto"><h2>ライブレポート</h2><p>日時：${esc(dayOf(x,i))} ${esc(stop.time||x.time||'')}</p><p>会場 / キャパ：${esc(stop.venue||x.venue)} / ${Number(stop.capacity||x.capacity||0).toLocaleString()}人</p><p>${joint?'自グループ集客予想人数':'動員予想人数'}：${ownForecast}人</p><p>${joint?'自グループ実際の集客人数':'実際の動員数'}：${own}人</p><hr><h3>ライブ収支</h3>${financial}${r.cheki?`<hr><h3>特典会（チェキ1枚1,000円）</h3>${extra.rows.map(v=>`<p>${esc(v.name)}：${v.count}枚 / ${yen(v.revenue)}</p>`).join('')}<p>チェキ合計売上：${yen(extra.total)}</p>`:''}<p style="margin-top:18px;border-top:1px solid #7183a6;padding-top:14px"><b>最終的な利益：${yen(fin.net)}</b></p><button id="idolCloseLiveReport">閉じる</button></div>`;
+ overlay.innerHTML=`<div style="background:#1b2741;color:white;border:1px solid #7183a6;border-radius:16px;padding:22px;max-width:650px;width:100%;max-height:90vh;overflow:auto"><h2>ライブレポート</h2><p>日時：${esc(dayOf(x,i))} ${esc(stop.time||x.time||'')}</p><p>会場 / キャパ：${esc(stop.venue||x.venue)} / ${Number(stop.capacity||x.capacity||0).toLocaleString()}人</p><p>${joint?'自グループ集客予想人数':'動員予想人数'}：${ownForecast}人</p><p>${joint?'自グループ実際の集客人数':'実際の動員数'}：${own}人</p><hr><h3>ライブ収支</h3>${financial}${r.cheki?`<hr><h3>特典会（チェキ1枚1,000円）</h3>${extra.rows.map(v=>`<p>${esc(v.name)}：${v.count}枚 / ${yen(v.revenue)}</p>`).join('')}<p>チェキ合計売上：${yen(extra.total)}</p>`:''}${r.cheki?`<p>特典会売上：＋${yen(extra.total)}</p>`:''}<p style="margin-top:18px;border-top:1px solid #7183a6;padding-top:14px"><b>最終的な利益：${yen(fin.net)}</b></p><button id="idolCloseLiveReport">閉じる</button></div>`;
  if(r.merchandise){const close=overlay.querySelector('#idolCloseLiveReport');const block=document.createElement('section');block.innerHTML='<hr><h3>グッズ物販</h3>'+r.merchandise.entries.map(e=>'<p>'+esc(e.name)+'：'+e.qty+'個 ／ '+yen(e.revenue)+'</p>').join('')+'<p><strong>物販売上合計：'+yen(r.merchandise.total)+'</strong></p>';close.parentNode.insertBefore(block,close);}
  overlay.querySelector('#idolCloseLiveReport').onclick=()=>overlay.remove();
 }
@@ -1898,7 +1898,27 @@ function action(x,i,stage){
   if(!available.length)return alert('特典会に参加できるメンバーがいません。');
   r.participatingMemberIds=available.map(m=>String(m.id));
   available.forEach(m=>useMemberHours(m,1));
-  r.minutes+=60;r.cheki=cheki(x,r.ownActual,r.stageMemberIds.benefit);r.financial=finance(x,i,r.actual,r.ownActual);r.stage='finished';r.finished=true;
+  r.minutes+=60;
+  r.stageMemberIds??={};
+  r.stageMemberIds.benefit=[...r.participatingMemberIds];
+  r.cheki=cheki(x,r.ownActual,r.stageMemberIds.benefit);
+  r.financial=finance(x,i,r.actual,r.ownActual);
+  // チェキはチケット精算とは別売上。ライブ収支・事務所資金・経営帳簿に一度だけ計上する。
+  const chekiRevenue=Math.max(0,Math.round(Number(r.cheki?.total)||0));
+  if(!r.chekiRevenueSettled){
+   r.financial.chekiRevenue=chekiRevenue;
+   r.financial.net=(Number(r.financial.net)||0)+chekiRevenue;
+   if(chekiRevenue){
+    state.agencyFunds=(Number(state.agencyFunds)||0)+chekiRevenue;
+    if(window.IDOL_ACCOUNTING?.recordBatch){
+     window.IDOL_ACCOUNTING.recordBatch(r.cheki.rows.filter(v=>v.revenue>0).map(v=>({amount:v.revenue,groupId:x.groupId,memberId:v.memberId,category:'live_cheki',description:'ライブ特典会 チェキ売上'})));
+    }else if(window.IDOL_ACCOUNTING?.record){
+     for(const v of r.cheki.rows.filter(v=>v.revenue>0))window.IDOL_ACCOUNTING.record(v.revenue,x.groupId,v.memberId,'live_cheki','ライブ特典会 チェキ売上');
+    }
+   }
+   r.chekiRevenueSettled=true;
+  }
+  r.stage='finished';r.finished=true;
  }else return;
  if(r.finished&&!r.liveSkillGrowthApplied){
   // Apply only on successful completion, once per performance, to the participating roster.
