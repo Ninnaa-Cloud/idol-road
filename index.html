@@ -201,8 +201,13 @@ function addEvent(a,date,title){if(!state.schedule.some(s=>s.audition===a.id&&s.
 // X automatic posts are stored in the existing game save and shown in the existing X timeline.
 const IDOL_X_RESOLUTIONS=(()=>{const openings=['全力で','笑顔で','自分らしく','ひたむきに','一歩ずつ','まっすぐに','元気いっぱいに','心を込めて','夢を信じて','感謝を忘れずに'];const endings=['最高のステージを届けます！','皆さんを笑顔にします！','たくさんの思い出を作りたいです！','大きな夢を叶えます！','毎日成長していきます！','歌とダンスで気持ちを伝えます！','応援に応えられるよう頑張ります！','会いに来てよかったと思えるアイドルになります！','誰かの背中を押せる存在になります！','グループを盛り上げていきます！'];return openings.flatMap(a=>endings.map(b=>a+b))})();
 function idolXRomanPart(v){const pairs={'きゃ':'kya','きゅ':'kyu','きょ':'kyo','しゃ':'sha','しゅ':'shu','しょ':'sho','ちゃ':'cha','ちゅ':'chu','ちょ':'cho','にゃ':'nya','にゅ':'nyu','にょ':'nyo','りゃ':'rya','りゅ':'ryu','りょ':'ryo','じゃ':'ja','じゅ':'ju','じょ':'jo'};const chars='あ:a い:i う:u え:e お:o か:ka き:ki く:ku け:ke こ:ko さ:sa し:shi す:su せ:se そ:so た:ta ち:chi つ:tsu て:te と:to な:na に:ni ぬ:nu ね:ne の:no は:ha ひ:hi ふ:fu へ:he ほ:ho ま:ma み:mi む:mu め:me も:mo や:ya ゆ:yu よ:yo ら:ra り:ri る:ru れ:re ろ:ro わ:wa を:o ん:n が:ga ぎ:gi ぐ:gu げ:ge ご:go ざ:za じ:ji ず:zu ぜ:ze ぞ:zo だ:da で:de ど:do ば:ba び:bi ぶ:bu べ:be ぼ:bo ぱ:pa ぴ:pi ぷ:pu ぺ:pe ぽ:po'.split(' ').reduce((a,x)=>{const [k,v]=x.split(':');a[k]=v;return a},{});let v0=String(v||'').normalize('NFKC').replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-96)).toLowerCase();return v0.split(/[ 　]+/).filter(Boolean).map(word=>{let o='';for(let i=0;i<word.length;i++){if(word[i]==='っ'){const next=pairs[word.slice(i+1,i+3)]||chars[word[i+1]]||'';o+=next[0]||'';continue}if(word[i]==='ー')continue;let dig=pairs[word.slice(i,i+2)];if(dig){o+=dig;i++;continue}o+=chars[word[i]]||(/^[a-z0-9]$/.test(word[i])?word[i]:'')}return o}).filter(Boolean).join('_')}
+function idolXDismissedAccount(account){
+ const match=/^member:(.+)$/.exec(String(account||''));
+ if(!match)return false;
+ return (state.groups||[]).some(g=>(g.members||[]).some(m=>String(m.id)===match[1]&&m.idolRoadDismissed));
+}
 function idolXPosts(){return state.idolXPosts??=[]}
-function idolXAdd(account,name,handle,body,photoId=null,repostOf=null){const p={id:'xp'+Date.now()+'_'+Math.random().toString(36).slice(2,9),account,name,handle,body,date:today(),photoId,repostOf,likes:0};idolXPosts().unshift(p);return p}
+function idolXAdd(account,name,handle,body,photoId=null,repostOf=null){if(idolXDismissedAccount(account))return null;const p={id:'xp'+Date.now()+'_'+Math.random().toString(36).slice(2,9),account,name,handle,body,date:today(),photoId,repostOf,likes:0};idolXPosts().unshift(p);return p}
 function idolXGroupIdPart(g){const name=String(g.name||'').trim();return idolXRomanPart(/^[A-Za-z0-9\s　]+$/.test(name)&&/[A-Za-z]/.test(name)?name:(g.nameReading||name))||'group'}
 function idolXHashName(v){return String(v||'').replace(/[\s\u3000]+/g,'')}
 function idolXHandleGroup(g){return '@'+idolXGroupIdPart(g)+'_official'}
@@ -3666,6 +3671,7 @@ function ageOf(m){
 }
 function members(){return (state.groups||[]).flatMap(g=>(g.members||[]).map(m=>({g,m}))).filter(x=>x.g&&x.m);}
 function xPost(account,name,handle,body,extra={}){
+ if(idolXDismissedAccount(account))return null;
  const p={id:'xincident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),account,name,handle,body,date:date(),likes:0,reposts:0,organicReposts:0,incidentId:extra.incidentId||null,incidentType:extra.incidentType||null,incidentKind:extra.kind||null};
  const fame=Math.max(0,Number(groupOf(extra.groupId)?.fame)||0);p.likes=rnd(Math.max(30,Math.round(fame*1.5)),Math.max(100,Math.round(fame*9+100)));p.organicReposts=Math.round(p.likes*(extra.kind==='magazine'?.08:.035));
  accountPosts().unshift(p);return p;
@@ -3835,16 +3841,20 @@ function respond(inc,decision){
  if(inc.status==='処分待ち'&&['事実確認中','事実を認める'].includes(decision))return;
  const member=IM(inc);if(!member||!IG(inc))return;
  inc.status='完了';inc.decision=decision;inc.resolvedDate=date();
- if(decision==='事実確認中'){inc.status='事実確認中';inc.checkedDate=date();addMemberLine(inc,inc.truth==='unconfirmed_false'?'記事に書かれていることは事実ではありません。信じてもらえるか不安ですが、きちんと説明したいです。':'記事に書かれていることは事実です。軽率な行動をしてしまい、本当に申し訳ありません。');save();return;}
+ if(decision==='事実確認中'){inc.status='事実確認中';inc.checkedDate=date();const issue=inc.type==='熱愛'?'交際について':inc.type==='ファンとの私的交流'?'ファンの方との個人的なやり取りについて':inc.type==='未成年飲酒'?'飲酒について':'喫煙について';
+ const mb=String(member.mbti||'');
+ const denied=inc.truth==='unconfirmed_false';
+ const reply=denied?(mb.startsWith('I')?`${issue}ですが、報道されているような事実はありません。誤解されている点を説明させてください。`:mb.includes('F')?`${issue}、書かれていることは違います…。信じてもらえるか不安ですが、ちゃんと説明したいです。`:`${issue}、記事の内容は事実ではありません。必要な確認には協力します。`):(mb.startsWith('I')?`${issue}、報道された内容は事実です。軽率な行動をしてしまい、申し訳ありません。`:mb.includes('F')?`${issue}、本当です…。応援してくれている方にもメンバーにも申し訳ない気持ちでいっぱいです。`:`${issue}、事実です。私の判断が間違っていました。申し訳ありません。`);
+ addMemberLine(inc,reply);save();return;}
  if(decision==='追加確認'){inc.status='追加確認待ち';inc.followupDate=date();addMemberLine(inc,'わかりました。もう一度、確認に協力します。');save();return;}
  if(decision==='不明処分'){inc.status='処分待ち';inc.truth='true';addMemberLine(inc,'事実関係が確定しないままの判断になることは理解しました。');save();return;}
  if(decision==='事実ではない'){if(inc.truth==='true')return;inc.truth='false';officialPost(inc,'公式否定');accountReactions(inc,decision);addReplies(inc,decision);save();return;}
  if(decision==='事実を認める'){inc.truth='true';inc.status='処分待ち';inc.checkedDate=date();addMemberLine(inc,'今回の件について事実を認め、事務所と今後の対応を相談しています。');save();return;}
- if(decision==='活動休止'){inc.truth=inc.truth||'true';IM(inc).activityStatus='活動休止';IM(inc).idolRoadPauseUntil=datePlusMonths(Number(inc.pauseMonths)||1);IM(inc).idolRoadPauseIncident=inc.id;IM(inc).idolRoadResumePending=false;addMemberLine(inc,`今回の件について、しばらく活動をお休みすることになりました。心配をかけてごめんなさい。`);}
+ if(decision==='活動休止'){inc.truth=inc.truth||'true';IM(inc).activityStatus='活動休止';IM(inc).idolRoadPauseUntil=datePlusMonths(Number(inc.pauseMonths)||1);IM(inc).idolRoadPauseIncident=inc.id;IM(inc).idolRoadResumePending=false;IM(inc).idolRoadResumeLineSent=false;addMemberLine(inc,`今回の件について、しばらく活動をお休みすることになりました。心配をかけてごめんなさい。`);}
  if(decision==='契約解除'){inc.truth='true';IM(inc).idolRoadDismissed=true;IM(inc).xAccountDeleted=true;IM(inc).xPostsDeleted=true;IM(inc).idolRoadResumePending=false;IM(inc).idolRoadPauseUntil=null;}
  if(decision==='処分を見送る'){inc.truth=inc.truth||'true';}
  
- officialPost(inc,decision);maybeMemberPost(inc,decision,decision);if(decision==='契約解除')state.idolXPosts=accountPosts().filter(p=>p.account!=='member:'+inc.memberId);accountReactions(inc,decision);addReplies(inc,decision);save();
+ officialPost(inc,decision);if(decision!=='契約解除')maybeMemberPost(inc,decision,decision);if(decision==='契約解除')state.idolXPosts=accountPosts().filter(p=>String(p.account)!=='member:'+String(inc.memberId));accountReactions(inc,decision);addReplies(inc,decision);save();
 }
 function datePlusMonths(n){const d=new Date(state.year,state.month-1,1);const originalDay=Number(state.day);d.setMonth(d.getMonth()+n);const lastDay=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(originalDay,lastDay));return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismissed&&!m.idolRoadResumePending&&m.activityStatus!=='活動休止'&&!m.idolRoadPauseUntil);if(!all.length)return;const eligible=all.filter(({m})=>{const a=ageOf(m);return a!==null&&a<20});let pool=['熱愛','ファンとの私的交流','ファンとの私的交流','熱愛'];if(eligible.length)pool.push('未成年飲酒','未成年喫煙');const type=pool[rnd(0,pool.length-1)];const baseCandidates=(type==='未成年飲酒'||type==='未成年喫煙')?eligible:all;const candidates=baseCandidates.filter(({m})=>!incidentList().some(inc=>String(inc.memberId)===String(m.id)&&String(inc.date).slice(0,4)===String(state.year)));if(!candidates.length)return;const chosen=candidates[rnd(0,candidates.length-1)],g=chosen.g,m=chosen.m;const truth=Math.random()<.62;const inc={id:'incident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),date:date(),groupId:g.id,memberId:m.id,type,truth:truth?'unconfirmed_true':'unconfirmed_false',status:'未確認',posts:[],publishedMagazineIds:[]};incidentList().unshift(inc);const useMagazine=Number(m.popularity||m.fame||0)>=70;
@@ -3867,11 +3877,22 @@ function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismisse
   const names=['みお','さくらの推し活','あお','現場帰り','なな','しおり','はる','りん','通りすがり','音楽好き','ゆず','日常メモ'];const name=names[(i+inc.id.length)%names.length];const p=xPost('fan:'+inc.id+':'+i,name,handle,fanBodies[i%fanBodies.length],{incidentId:inc.id,incidentType:type,kind:'fan',groupId:g.id});
   p.likes=rnd(0,180);p.organicReposts=rnd(0,24);
  }
- initialIncidentImpact(inc);addMemberLine(inc,`${memberName(m)}です。Xで私のことが取り上げられているのを見ました。突然のことで驚いています。お話しできますか？`);save();
+ initialIncidentImpact(inc);
+ const mb=String(m.mbti||'');
+ const topic=type==='熱愛'?'交際の噂':type==='ファンとの私的交流'?'ファンの方とのやり取り':type==='未成年飲酒'?'飲酒についての投稿':'喫煙についての投稿';
+ const opening=mb.startsWith('I')?`お疲れさまです。Xで私の${topic}が広まっているのを見ました。少しお話ししてもよろしいでしょうか。`:mb.includes('F')?`すみません、Xで私の${topic}が出ていて…。どうしたらいいか不安です。少しお話しできますか？`:`Xで私の${topic}が取り上げられていることを確認しました。状況を説明したいので、お時間いただけますか？`;
+ addMemberLine(inc,opening);save();
 }
 function daily(){const day=date();if(state.idolRoadIncidentLastDay===day)return;state.idolRoadIncidentLastDay=day;
  // Finish an internal suspension on its actual date; the duration is never included in the public announcement.
- for(const {m} of members())if(m.idolRoadPauseUntil&&m.idolRoadPauseUntil<=day&&!m.idolRoadDismissed){m.idolRoadResumePending=true;/* 期間満了後も本人の活動休止は維持。プレイヤー承認まで復帰させない。 */}
+ for(const {m} of members())if(m.idolRoadPauseUntil&&m.idolRoadPauseUntil<=day&&!m.idolRoadDismissed){
+  m.idolRoadResumePending=true;
+  if(!m.idolRoadResumeLineSent){
+   const inc=incidentList().find(x=>String(x.id)===String(m.idolRoadPauseIncident));
+   if(inc){state.idolRoadMemberLines??=[];state.idolRoadMemberLines.unshift({id:'resume_'+String(inc.id)+'_'+String(m.id),date:day,groupId:inc.groupId,memberId:inc.memberId,member:memberName(m),text:'お疲れさまです。活動休止の期間が終わりました。休止中に自分なりにいろいろ考えて、また活動を頑張りたいと思っています。復帰について相談させてもらえますか？',read:false,incidentId:inc.id,resumeRequest:true});m.idolRoadResumeLineSent=true;}
+  }
+  /* 期間満了後も本人の活動休止は維持。プレイヤー承認まで復帰させない。 */
+ }
  for(const inc of incidentList())if(inc.status!=='完了'&&!inc.impactStarted)initialIncidentImpact(inc);
  for(const inc of incidentList())if(inc.status==='追加確認待ち'&&inc.followupDate&&date()>inc.followupDate){inc.status='事実確認中';inc.truth=inc.truth==='unconfirmed_false'?'unconfirmed_false':'unconfirmed_true';addMemberLine(inc,inc.truth==='unconfirmed_false'?'追加で確認しましたが、やはり記事の内容は事実ではありません。':'追加で確認した結果、記事の内容は事実だと認めます。');}
  naturalRecovery();
@@ -3891,14 +3912,20 @@ function renderPanel(){const items=incidentList();const current=getCurrent();con
 let rootPanel=null,returnX=null,observer=null;
 function ensureButton(){const overlay=document.getElementById('idol-sns-overlay'),root=document.getElementById('idol-sns-root');if(!overlay||!root)return;let b=document.getElementById('idol-road-incident-open');if(!b){b=document.createElement('button');b.id='idol-road-incident-open';b.textContent='暴露・週刊誌';b.style.cssText='position:fixed;z-index:100000;right:78px;top:12px;border:1px solid #b8b8b8;background:#fff;color:#222;border-radius:20px;padding:8px 12px;font-weight:700;box-shadow:0 2px 10px #0002';overlay.appendChild(b);b.addEventListener('click',()=>{returnX=document.createDocumentFragment();while(root.firstChild)returnX.appendChild(root.firstChild);rootPanel=root;const wrapper=document.createElement('div');wrapper.id='idol-road-incident-panel';wrapper.style.cssText='position:absolute;inset:0;z-index:99999;overflow:auto;background:#f7f8fa';root.appendChild(wrapper);rootPanel=wrapper;renderPanel();});}
 }
-function onRootClick(e){const b=e.target.closest('[data-inc-action],#inc-back');if(!b)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();if(b.id==='inc-back'){const root=document.getElementById('idol-sns-root');if(root){const panel=document.getElementById('idol-road-incident-panel');if(panel)panel.remove();if(returnX)root.appendChild(returnX);returnX=null;rootPanel=null;}return;}const inc=incidentList().find(x=>x.id===b.dataset.incId);if(!inc)return;if(b.dataset.incAction==='復帰承認'){const m=IM(inc);if(!m||!m.idolRoadResumePending||m.idolRoadDismissed||!m.idolRoadPauseUntil||m.idolRoadPauseUntil>date())return;m.idolRoadResumePending=false;m.idolRoadPauseUntil=null;m.activityStatus='活動中';if(!inc.resumePublished){inc.resumePublished=true;officialPost(inc,'活動再開');maybeMemberPost(inc,'活動再開','活動再開');}save();renderPanel();return;}if(b.dataset.incAction==='活動休止'){const n=Number(document.getElementById('inc-pause-months')?.value);inc.pauseMonths=[1,2,3].includes(n)?n:1;}respond(inc,b.dataset.incAction);renderPanel();}
+function onRootClick(e){const b=e.target.closest('[data-inc-action],#inc-back');if(!b)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();if(b.id==='inc-back'){const root=document.getElementById('idol-sns-root');if(root){const panel=document.getElementById('idol-road-incident-panel');if(panel)panel.remove();if(returnX)root.appendChild(returnX);returnX=null;rootPanel=null;}return;}const inc=incidentList().find(x=>x.id===b.dataset.incId);if(!inc)return;if(b.dataset.incAction==='復帰承認'){const m=IM(inc);if(!m||!m.idolRoadResumePending||m.idolRoadDismissed||!m.idolRoadPauseUntil||m.idolRoadPauseUntil>date())return;window.IDOL_ROAD_INCIDENTS?.resume?.(inc.id);renderPanel();return;}if(b.dataset.incAction==='活動休止'){const n=Number(document.getElementById('inc-pause-months')?.value);inc.pauseMonths=[1,2,3].includes(n)?n:1;}respond(inc,b.dataset.incAction);renderPanel();}
 function setup(){ensureButton();const root=document.getElementById('idol-sns-root');if(root&&!root.dataset.incListener){root.dataset.incListener='1';root.addEventListener('click',onRootClick,true);}if(!observer&&root){observer=new MutationObserver(()=>{ensureButton();const panel=document.getElementById('idol-road-incident-panel');if(panel&&rootPanel!==panel){rootPanel=panel;renderPanel();}});observer.observe(root,{childList:true,subtree:false});}}
 // Use the same game-day progression as the existing simulator. Never replace the main state or save key.
 const oldAddDay=addDay;addDay=function(){const result=oldAddDay.apply(this,arguments);try{daily();}catch(e){console.error('Incident daily processing failed',e)}return result;};
 // When opening the existing X overlay, add the incident-management entry without changing tabs or page layout.
 /* X内の炎上管理画面は使用しない。事件の発生・X投稿処理は維持する。 */
 
-window.IDOL_ROAD_INCIDENTS={daily,trigger:triggerIncident,respond:(id,decision)=>{const inc=incidentList().find(x=>x.id===id);if(inc)respond(inc,decision)},list:incidentList};
+window.IDOL_ROAD_INCIDENTS={daily,trigger:triggerIncident,resume:(id)=>{
+ const inc=incidentList().find(x=>String(x.id)===String(id));if(!inc)return false;
+ const m=IM(inc);if(!m||!m.idolRoadResumePending||m.idolRoadDismissed||!m.idolRoadPauseUntil||m.idolRoadPauseUntil>date())return false;
+ m.idolRoadResumePending=false;m.idolRoadPauseUntil=null;m.activityStatus='活動中';
+ if(!inc.resumePublished){inc.resumePublished=true;officialPost(inc,'活動再開');maybeMemberPost(inc,'活動再開','活動再開');}
+ save();return true;
+},respond:(id,decision)=>{const inc=incidentList().find(x=>x.id===id);if(inc)respond(inc,decision)},list:incidentList};
 })();
 </script><script>
 /* IDOL ROAD: confirmed scandal impact on attendance and incoming external invitations. */
@@ -3971,7 +3998,7 @@ function personality(m,t){const mb=String(m.mbti||'');if(mb.startsWith('I'))retu
 function makeChoices(topic){return topic.slice(1).map((label,i)=>({label,outcome:i===0?'resolved':i===1?'resolved':'unresolved'}))}
 function activeEligible(topic,g){if(topic>=5&&topic<=9){return (g.members||[]).filter(housed).length>=2;}if(topic>=10&&topic<=14){return (state.idolRoadIncidents||[]).some(x=>String(x.groupId)===String(g.id)&&!x.closed&&x.decision!=='契約解除')}return true}
 function greeting(){for(const {id,m} of members()){const th=getThread(id);if(th.messages.length)continue;const texts=['はじめまして！これからよろしくお願いします！','今日からお世話になります。精一杯頑張ります！','よろしくお願いします！一生懸命頑張りますね。','これから色々学びたいです。よろしくお願いします！','今日からよろしくお願いします。少し緊張しています！'];add(id,personality(m,texts[store().serial%texts.length]),{kind:'greeting'})}}
-function syncIncidents(){const st=store();for(const x of state.idolRoadMemberLines||[]){const id=String(x.memberId);if(!members().some(m=>m.id===id))continue;const key=String(x.id||`${x.memberId}:${x.date}:${x.text}`);if(st.incidentIds.includes(key))continue;st.incidentIds.push(key);const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(x.incidentId));const opts=inc&&inc.status!=='完了'?inc.status==='処分待ち'?[{label:'活動休止（1ヶ月）',incidentDecision:'活動休止',months:1},{label:'活動休止（2ヶ月）',incidentDecision:'活動休止',months:2},{label:'活動休止（3ヶ月）',incidentDecision:'活動休止',months:3},{label:'契約解除',incidentDecision:'契約解除'},{label:'処分を見送る',incidentDecision:'処分を見送る'}]:inc.status==='事実確認中'?(inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}]):inc.status==='未確認'?[{label:'本人に事実確認する',incidentDecision:'事実確認中'}]:null:null;add(id,x.text,{kind:'incident',level:'incident',incidentId:x.incidentId,choices:opts,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey()});} }
+function syncIncidents(){const st=store();for(const x of state.idolRoadMemberLines||[]){const id=String(x.memberId);if(!members().some(m=>m.id===id))continue;const key=String(x.id||`${x.memberId}:${x.date}:${x.text}`);if(st.incidentIds.includes(key))continue;st.incidentIds.push(key);const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(x.incidentId));const opts=x.resumeRequest?[{label:'活動再開を承認する',resumeApproval:true}]:inc&&inc.status!=='完了'?inc.status==='処分待ち'?[{label:'活動休止（1ヶ月）',incidentDecision:'活動休止',months:1},{label:'活動休止（2ヶ月）',incidentDecision:'活動休止',months:2},{label:'活動休止（3ヶ月）',incidentDecision:'活動休止',months:3},{label:'契約解除',incidentDecision:'契約解除'},{label:'処分を見送る',incidentDecision:'処分を見送る'}]:inc.status==='事実確認中'?(inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}]):inc.status==='未確認'?[{label:'本人に事実確認する',incidentDecision:'事実確認中'}]:null:null;add(id,x.text,{kind:'incident',level:'incident',incidentId:x.incidentId,choices:opts,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey()});} }
 // Major consultations — attached to the existing single member LINE thread.
 const majorCfg={motivation:{priority:4,cooldown:30},pressure:{priority:5,cooldown:30},conflict:{priority:3,cooldown:7},graduation:{priority:1,cooldown:90},leave:{priority:2,cooldown:7}};
 const randomBetween=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
@@ -4145,13 +4172,13 @@ function showChat(id,focusId=null){const x=members().find(v=>v.id===id);if(!x){s
 function incidentOfficeText(x,inc,decision,months){
  const name=x.name||'本人';
  const kind=String(inc?.type||'');
- const subject=kind.includes('恋愛')?'交際に関する報道':kind.includes('ファン')?'ファンとの私的な交流':kind.includes('飲酒')?'飲酒に関する報道':kind.includes('喫煙')?'喫煙に関する報道':'今回の報道';
+ const subject=(kind.includes('熱愛')||kind.includes('恋愛'))?'交際に関する報道':kind.includes('ファン')?'ファンとの私的な交流':kind.includes('飲酒')?'飲酒に関する報道':kind.includes('喫煙')?'喫煙に関する報道':'今回の報道';
  const friendly=String(x.m?.mbti||'').startsWith('F');
  const first=friendly?`${name}、突然のことで不安だと思うけど、`:`${name}、`;
  switch(decision){
  case '事実確認中':return first+`${subject}について、まずあなた自身の言葉で何があったのか聞かせてほしい。事実と違うところがあれば、それも教えてね。`;
  case '事実を認める':return friendly?'正直に話してくれてありがとう。今回のことを踏まえて、これからどう対応するか一緒に確認しよう。':'話してくれてありがとう。事実関係を確認できたので、今後の対応について話し合おう。';
- case '事実ではない':return '話してくれてありがとう。事実ではないと確認できたので、事務所から正式に説明するね。';
+ case '事実ではない':return friendly?'話してくれてありがとう。あなたの説明を信じて、事務所からもきちんと否定するね。':'説明してくれてありがとう。事務所から、今回の報道は事実ではないと正式に発表するね。';
  case '追加確認':return '説明してくれてありがとう。判断する前に、もう少し詳しく確認させてほしい。分かる範囲で協力してね。';
  case '不明処分':return 'まだ確認できていない部分はあるけれど、事務所として今後の対応を検討することになった。あなたの話も引き続き聞かせてほしい。';
  case '活動休止':return `話し合った結果、${months||1}ヶ月間、活動を休止してもらうことになった。休止中のことや復帰についても、改めて相談しよう。`;
@@ -4163,11 +4190,24 @@ function incidentOfficeText(x,inc,decision,months){
 function respond(x,msg,index){
  if(msg.answered||!msg.choices?.[index])return;
  const ch=msg.choices[index];msg.answered=true;
+ if(ch.resumeApproval){
+  const result=window.IDOL_ROAD_INCIDENTS?.resume?.(msg.incidentId);
+  if(!result){msg.answered=false;showChat(x.id);return;}
+  add(x.id,'復帰について相談してくれてありがとう。活動再開を承認するよ。これからまた一緒に頑張ろう。',{mine:true,answerTo:msg.id});
+  add(x.id,'ありがとうございます！またみんなと活動できるのが嬉しいです。これからよろしくお願いします！',{kind:'incident',level:'light',incidentId:msg.incidentId});
+  save();showChat(x.id);return;
+ }
  if(ch.incidentDecision){const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(msg.incidentId));if(!inc||inc.status==='完了'||(ch.incidentDecision==='事実確認中'&&inc.status!=='未確認')){msg.answered=false;showChat(x.id);return;}if(ch.months)inc.pauseMonths=ch.months;const officeText=incidentOfficeText(x,inc,ch.incidentDecision,ch.months);
  // Reply to the member first, then advance the incident and immediately import their response.
  add(x.id,officeText||ch.label,{mine:true,answerTo:msg.id});
  window.IDOL_ROAD_INCIDENTS?.respond(inc.id,ch.incidentDecision);
  syncIncidents();
+ // Preserve the current chat view and import all incident messages before repainting.
+ // A pending message without choices must never block the next actionable reply.
+ const thread=getThread(x.id);
+ for(const pending of thread.messages){
+  if(pending.kind==='incident'&&pending.incidentId===inc.id&&!pending.answered&&(!pending.choices||!pending.choices.length))pending.answered=true;
+ }
  save();showChat(x.id);return;}
  if(msg.majorType){add(x.id,ch.label,{mine:true,answerTo:msg.id});majorRespond(x,msg,index);save();showChat(x.id);return;}
  add(x.id,ch.label,{mine:true,answerTo:msg.id});
