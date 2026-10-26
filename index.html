@@ -373,17 +373,18 @@ renderGroups=function(){
  const detail=el('groupDetail');
  if(!g||!detail)return;
  const members=g.members||[];
+ const lessonMembers=members.filter(m=>!m.idolRoadDismissed&&m.activityStatus!=='活動休止');
  const day=dateObj().getDay();
  const canLessonDay=day===2||day===4;
  const lessonDone=g.groupLessonDate===today();
- const lessonTimeOK=members.length>0&&members.every(m=>memberDayHours(m)>=2);
- const minRemaining=members.length?Math.min(...members.map(memberDayHours)):0;
+ const lessonTimeOK=lessonMembers.length>0&&lessonMembers.every(m=>memberDayHours(m)>=2);
+ const minRemaining=lessonMembers.length?Math.min(...lessonMembers.map(memberDayHours)):0;
  const section=document.createElement('section');
  section.className='group-activity';
  section.innerHTML=`<h3>グループ全体活動</h3>
- <div class="hint">対象：${members.length}人 ／ 全員の残り時間（最少）：${minRemaining}時間 ／ 活動時間は所属メンバーそれぞれから消費されます。</div>
+ <div class="hint">対象：${lessonMembers.length}人（活動休止中を除く） ／ 参加者の残り時間（最少）：${minRemaining}時間 ／ 活動時間は所属メンバーそれぞれから消費されます。</div>
  <h4>全体レッスン</h4>
- <div class="hint">火曜・木曜のみ、グループごとに当日1回。各メンバーの歌・ダンス・トーク・演技・ファン対応・SNSそれぞれに経験値＋5～15（個別抽選）。全員2時間消費。</div>
+ <div class="hint">火曜・木曜のみ、グループごとに当日1回。各メンバーの歌・ダンス・トーク・演技・ファン対応・SNSそれぞれに経験値＋5～15（個別抽選）。参加メンバーのみ2時間消費。</div>
  <div class="activity-row"><button id="doGroupLesson" ${!canLessonDay||lessonDone||!lessonTimeOK?'disabled':''}>全体レッスンを実施</button><span>${!canLessonDay?'火曜日・木曜日のみ実施可能':lessonDone?'本日は実施済み':!lessonTimeOK?'残り時間が不足しているメンバーがいます':'実施可能'}</span></div>
  <h4>全員休養</h4>
  <div class="hint">1日何回でも実施可能。全員が選択時間を消費し、メンタルが回復・疲労度が減少します（上限100／下限0）。</div>
@@ -392,11 +393,11 @@ renderGroups=function(){
  if(anchor)anchor.after(section);else detail.append(section);
  section.querySelector('#doGroupLesson').onclick=()=>{
   if(![2,4].includes(dateObj().getDay())||g.groupLessonDate===today())return alert('全体レッスンは火曜・木曜に1日1回のみ実施できます。');
-  if(!members.length||!members.every(m=>memberDayHours(m)>=2))return alert('全員に2時間以上の残り時間が必要です。');
-  if(!confirm(`${g.name}の全体レッスンを実施しますか？\n所属メンバー${members.length}人それぞれが2時間消費します。`))return;
+  if(!lessonMembers.length||!lessonMembers.every(m=>memberDayHours(m)>=2))return alert('活動可能なメンバー全員に2時間以上の残り時間が必要です。');
+  if(!confirm(`${g.name}の全体レッスンを実施しますか？\n参加メンバー${lessonMembers.length}人それぞれが2時間消費します。`))return;
   const keys=['歌','ダンス','トーク','演技','ファン対応','SNS'];
-  for(const m of members){useMemberHours(m,2);for(const k of keys)addSkillExperience(m,k,rand(5,15));}
-  g.groupLessonDate=today();save();renderGroups();alert('全体レッスン完了：全員の6能力に経験値＋5～15、各2時間消費しました。');
+  for(const m of lessonMembers){useMemberHours(m,2);for(const k of keys)addSkillExperience(m,k,rand(5,15));}
+  g.groupLessonDate=today();save();renderGroups();alert('全体レッスン完了：参加メンバーの6能力に経験値＋5～15、各2時間消費しました。');
  };
  section.querySelector('#doGroupRest').onclick=()=>{
   const h=Number(section.querySelector('#groupRestHours').value);
@@ -1862,7 +1863,7 @@ function action(x,i,stage){
   const warning=stageWarning(x,i,'travel',r);if(warning&&!confirm(warning))return;const moved=spendStage(x,i,'travel',r);if(!moved.length)return alert('移動できるメンバーがいません。');
   r.travelMinutes=minutes;r.minutes+=minutes;r.stage='venue';
  }else if(stage==='perform'&&r.stage==='venue'){
-  const performers=eligible(x,i,'perform',r);if(!performers.length){const candidates=roster(x,i);const intervalTime=interval(x,i,'perform');return alert(!candidates.length?'出演対象メンバーがいません。予定の重複・活動休止・年齢制限を確認してください。':!intervalTime?'ライブの開催時間を取得できません。':'ライブ実行に必要な参加条件を満たすメンバーがいません。開催時間 '+intervalTime[0]+'〜'+intervalTime[1]+'時、メンバーの当日の活動時間・予定の重複・年齢制限を確認してください。');}const warning=stageWarning(x,i,'perform',r);if(warning&&!confirm(warning))return;
+  const warning=stageWarning(x,i,'perform',r);if(warning&&!confirm(warning))return;const performers=eligible(x,i,'perform',r);if(!performers.length)return alert('ライブ本番に参加できるメンバーがいません。');
   // Calculate the day's attendance once; do not redraw during report or cheki settlement.
   if(isExternal(x)){
    // Use the own-group forecast saved when the invitation was issued.
@@ -1881,10 +1882,10 @@ function action(x,i,stage){
     r.ownActual=Number(settlement.ownTickets)||0;
    }else r.ownActual=r.actual;
   }
-  const w=liveWindow(x,i),eligible=performers.filter(m=>irFixedTimeCanJoin(m,w.start,w.end)&&IDOL_BOOKING.participates(m,groupOf(x)?.id,dayOf(x,i),w.start,w.end,'live:'+x.id));
-  if(!eligible.length)return alert('開催時刻に参加できるメンバーがいません。');
-  r.participatingMemberIds=eligible.map(m=>String(m.id));r.stageMemberIds??={};r.stageMemberIds.perform=[...r.participatingMemberIds];
-  eligible.forEach(m=>irFixedTimeSpend(m,w.start,w.end));
+  const w=liveWindow(x,i),performingMembers=performers.filter(m=>irFixedTimeCanJoin(m,w.start,w.end)&&IDOL_BOOKING.participates(m,groupOf(x)?.id,dayOf(x,i),w.start,w.end,'live:'+x.id));
+  if(!performingMembers.length)return alert('開催時刻に参加できるメンバーがいません。');
+  r.participatingMemberIds=performingMembers.map(m=>String(m.id));r.stageMemberIds??={};r.stageMemberIds.perform=[...r.participatingMemberIds];
+  performingMembers.forEach(m=>irFixedTimeSpend(m,w.start,w.end));
   r.minutes+=x.graduationId?240:180;r.stage=(isExternal(x)||x.benefit)?'benefit':'finished';
   if(r.stage==='finished'){r.financial=finance(x,i,r.actual,r.ownActual);r.finished=true;}
  }else if(stage==='benefit'&&r.stage==='benefit'){
@@ -1926,7 +1927,7 @@ renderLiveHost=function(){
   const stop=stopOf(x,i),r=recordOf(x,i)||{stage:'waiting',minutes:0},row=document.createElement('div');row.style.cssText='border-top:1px solid #455470;padding:12px 0';
   row.innerHTML=`<strong>${esc(x.name||x.event)}</strong><p>${esc(x.groupName||groupOf(x)?.name||'')} / ${esc(stop.venue||x.venue)} / ${esc(stop.time||x.time||'')}</p><p>進行：${r.stage==='waiting'?'移動前':r.stage==='venue'?'会場到着':r.stage==='benefit'?'ライブ終了・特典会待ち':'終了'} ／ 所要時間 ${r.minutes||0}分</p>`;
   if(r.stage==='finished'){const b=document.createElement('button');b.textContent='レポートを見る';b.onclick=()=>report(x,i);row.append(b);}
-  else{const stage=r.stage==='waiting'?'travel':r.stage==='venue'?'perform':'benefit',b=document.createElement('button');b.textContent=stage==='travel'?'会場へ移動する':stage==='perform'?'ライブ実行（3時間）':'特典会へ（1時間）';b.onclick=()=>{const before=recordOf(x,i)?.stage||'waiting';try{action(x,i,stage);const after=recordOf(x,i)?.stage||'waiting';if(before===after)alert('ライブ実行が進みませんでした。処理段階：'+before+' / 操作：'+stage+'。画面に出た警告を教えてください。');}catch(err){console.error('[IDOL ROAD LIVE ACTION]',err);alert('ライブ実行エラー：'+(err&&err.message?err.message:String(err)));}};row.append(b);const required=stage==='travel'?travelMinutes(x,i):stage==='perform'?180:60;/* Keep the action accessible: the handler reports the exact blocking condition. */const note=document.createElement('p');note.style.cssText='font-size:12px;color:#ffd9a2';note.textContent=required===null?'東京発の片道移動時間を取得できません。':`時間帯 ${interval(x,i,stage)?.map(v=>String(Math.floor(v)).padStart(2,'0')+':'+String(Math.round((v%1)*60)).padStart(2,'0')).join('〜')||'不明'} ／ 参加可能 ${eligible(x,i,stage,r).length}人`;row.append(note);}
+  else{const stage=r.stage==='waiting'?'travel':r.stage==='venue'?'perform':'benefit',b=document.createElement('button');b.textContent=stage==='travel'?'会場へ移動する':stage==='perform'?'ライブ実行（3時間）':'特典会へ（1時間）';b.onclick=()=>action(x,i,stage);row.append(b);const required=stage==='travel'?travelMinutes(x,i):stage==='perform'?180:60;if(required===null||!eligible(x,i,stage,r).length)b.disabled=true;const note=document.createElement('p');note.style.cssText='font-size:12px;color:#ffd9a2';note.textContent=required===null?'東京発の片道移動時間を取得できません。':`時間帯 ${interval(x,i,stage)?.map(v=>String(Math.floor(v)).padStart(2,'0')+':'+String(Math.round((v%1)*60)).padStart(2,'0')).join('〜')||'不明'} ／ 参加可能 ${eligible(x,i,stage,r).length}人`;row.append(note);}
   section.append(row);
  }
  root.prepend(section);
@@ -4112,7 +4113,7 @@ function tick(){
    if(msg.kind!=='incident'||msg.answered||!msg.incidentId)continue;
    const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(msg.incidentId));
    if(!inc||inc.status!=='事実確認中')continue;
-   msg.choices=[{label:inc.truth==='unconfirmed_false'?'事実ではないと確認した':'事実を認める',incidentDecision:inc.truth==='unconfirmed_false'?'事実ではない':'事実を認める'}];
+   msg.choices=inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}];
   }
  }
  if(st.lastDay===now){badge();return}
@@ -4140,10 +4141,34 @@ let current=null,shown=50;
 function avatar(m){const img=icon(m);const a=document.createElement(img?'img':'span');a.className='ir-avatar';if(img){a.src=img;a.onerror=()=>{a.style.display='none'}}else{a.textContent='👤';a.style.display='grid';a.style.placeItems='center'}return a}
 function showList(){current=null;const wrap=document.createElement('div');wrap.className='ir-line';const list=document.createElement('div');list.className='ir-list';wrap.append(list);const items=members().map(x=>({...x,th:getThread(x.id)})).sort((a,b)=>{const aa=a.th.messages.at(-1),bb=b.th.messages.at(-1);return (bb?.date||'').localeCompare(aa?.date||'')||(bb?.time||'').localeCompare(aa?.time||'')});for(const x of items){const btn=document.createElement('button');btn.className='ir-person';btn.append(avatar(x.m));const col=document.createElement('span');col.style.cssText='flex:1;min-width:0';const name=document.createElement('div');name.textContent=x.name;name.style.fontWeight=x.th.unread?'bold':'normal';const preview=document.createElement('div');preview.textContent=x.th.messages.at(-1)?.text||'メッセージはありません';preview.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#777';col.append(name,preview);btn.append(col);const unanswered=x.th.messages.filter(y=>y.choices&&!y.answered).length;if(x.th.messages.some(y=>y.level==='major'&&y.choices&&!y.answered&&!y.mine)){const warn=document.createElement('span');warn.textContent='重要';warn.className='ir-pill';warn.title='重大相談';btn.append(warn)}if(unanswered){const b=document.createElement('span');b.className='ir-pill';b.textContent='返信待ち';btn.append(b)}if(x.th.unread){const b=document.createElement('span');b.className='ir-pill';b.textContent=x.th.unread;btn.append(b)}btn.onclick=()=>showChat(x.id);list.append(btn)}root.replaceChildren(wrap)}
 function showChat(id,focusId=null){const x=members().find(v=>v.id===id);if(!x){showList();return}current=id;const th=getThread(id);th.unread=0;save();badge();const wrap=document.createElement('div');wrap.className='ir-line';const back=document.createElement('button');back.className='ir-back';back.textContent=`‹ 一覧へ　${x.name}`;back.onclick=showList;const chat=document.createElement('div');chat.className='ir-chat';const scroll=document.createElement('div');scroll.className='ir-scroll';const jump=document.createElement('button');jump.className='ir-jump';jump.textContent='最新のメッセージ ↓';jump.hidden=true;const bottom=()=>{scroll.scrollTop=scroll.scrollHeight;jump.hidden=true};jump.onclick=bottom;scroll.onscroll=()=>{jump.hidden=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80};const all=th.messages;const shownMessages=all.slice(-shown);if(shown<all.length){const load=document.createElement('button');load.className='ir-btn';load.textContent='以前の50件を表示';load.onclick=()=>{const h=scroll.scrollHeight,top=scroll.scrollTop;shown+=50;showChat(id);const sc=root.querySelector('.ir-scroll');sc.scrollTop=Math.max(0,sc.scrollHeight-h+top)};scroll.append(load)}let lastDate='';for(const msg of shownMessages){if(msg.date!==lastDate){const d=document.createElement('div');d.className='ir-day';d.textContent=dateDisplay(msg.date);scroll.append(d);lastDate=msg.date}const row=document.createElement('div');row.className='ir-row'+(msg.mine?' mine':'');row.dataset.messageId=msg.id;if(!msg.mine)row.append(avatar(x.m));const clock=document.createElement('div');clock.className='ir-clock';clock.textContent=(msg.mine?'既読\n':'')+msg.time;clock.style.whiteSpace='pre-line';const bubble=document.createElement('div');bubble.className='ir-bubble';if(msg.answerTo){const source=all.find(y=>y.id===msg.answerTo);if(source){const q=document.createElement('div');q.className='ir-quote';q.textContent=source.text.split('\n').slice(0,2).join('\n').slice(0,100)+(source.text.length>100?'…':'');q.onclick=()=>showChat(id,source.id);bubble.append(q)}}const body=document.createElement('div');body.textContent=msg.text;bubble.append(body);if(msg.choices&&!msg.answered){const reply=document.createElement('button');reply.className='ir-btn';reply.textContent='この相談に返信';reply.onclick=()=>{if(bubble.querySelector('.ir-options'))return;const options=document.createElement('div');options.className='ir-options';msg.choices.forEach((ch,i)=>{const btn=document.createElement('button');btn.className='ir-btn';btn.textContent=ch.label;btn.onclick=()=>respond(x,msg,i);options.append(btn)});bubble.append(options)};bubble.append(reply)}if(msg.mine){row.append(clock,bubble)}else{row.append(bubble,clock)}scroll.append(row)}chat.append(scroll,jump);wrap.append(back,chat);root.replaceChildren(wrap);if(focusId){const target=Array.from(scroll.querySelectorAll('[data-message-id]')).find(e=>e.dataset.messageId===focusId);if(target){target.scrollIntoView({block:'center'});target.classList.add('ir-highlight');setTimeout(()=>target.classList.remove('ir-highlight'),2000)}else if(shown<all.length){shown=all.length;showChat(id,focusId)}}else bottom()}
+// Keep choice labels as UI actions; send contextual office messages in the conversation.
+function incidentOfficeText(x,inc,decision,months){
+ const name=x.name||'本人';
+ const kind=String(inc?.type||'');
+ const subject=kind.includes('恋愛')?'交際に関する報道':kind.includes('ファン')?'ファンとの私的な交流':kind.includes('飲酒')?'飲酒に関する報道':kind.includes('喫煙')?'喫煙に関する報道':'今回の報道';
+ const friendly=String(x.m?.mbti||'').startsWith('F');
+ const first=friendly?`${name}、突然のことで不安だと思うけど、`:`${name}、`;
+ switch(decision){
+ case '事実確認中':return first+`${subject}について、まずあなた自身の言葉で何があったのか聞かせてほしい。事実と違うところがあれば、それも教えてね。`;
+ case '事実を認める':return friendly?'正直に話してくれてありがとう。今回のことを踏まえて、これからどう対応するか一緒に確認しよう。':'話してくれてありがとう。事実関係を確認できたので、今後の対応について話し合おう。';
+ case '事実ではない':return '話してくれてありがとう。事実ではないと確認できたので、事務所から正式に説明するね。';
+ case '追加確認':return '説明してくれてありがとう。判断する前に、もう少し詳しく確認させてほしい。分かる範囲で協力してね。';
+ case '不明処分':return 'まだ確認できていない部分はあるけれど、事務所として今後の対応を検討することになった。あなたの話も引き続き聞かせてほしい。';
+ case '活動休止':return `話し合った結果、${months||1}ヶ月間、活動を休止してもらうことになった。休止中のことや復帰についても、改めて相談しよう。`;
+ case '契約解除':return '今回の件について検討した結果、契約を終了する判断になりました。今後の手続きについては事務所から説明します。';
+ case '処分を見送る':return '今回の件については処分を見送ることにしたよ。ただ、同じことが起きないように、今後の行動について一緒に確認しよう。';
+ default:return null;
+ }
+}
 function respond(x,msg,index){
  if(msg.answered||!msg.choices?.[index])return;
  const ch=msg.choices[index];msg.answered=true;
- if(ch.incidentDecision){const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(msg.incidentId));if(!inc||inc.status==='完了'||(ch.incidentDecision==='事実確認中'&&inc.status!=='未確認')){msg.answered=false;showChat(x.id);return;}if(ch.months)inc.pauseMonths=ch.months;window.IDOL_ROAD_INCIDENTS?.respond(inc.id,ch.incidentDecision);add(x.id,ch.label,{mine:true,answerTo:msg.id});if(ch.incidentDecision==='事実確認中'){add(x.id,'今回の報道について、事実関係を確認してください。',{mine:true});}save();showChat(x.id);return;}
+ if(ch.incidentDecision){const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(msg.incidentId));if(!inc||inc.status==='完了'||(ch.incidentDecision==='事実確認中'&&inc.status!=='未確認')){msg.answered=false;showChat(x.id);return;}if(ch.months)inc.pauseMonths=ch.months;const officeText=incidentOfficeText(x,inc,ch.incidentDecision,ch.months);
+ // Reply to the member first, then advance the incident and immediately import their response.
+ add(x.id,officeText||ch.label,{mine:true,answerTo:msg.id});
+ window.IDOL_ROAD_INCIDENTS?.respond(inc.id,ch.incidentDecision);
+ syncIncidents();
+ save();showChat(x.id);return;}
  if(msg.majorType){add(x.id,ch.label,{mine:true,answerTo:msg.id});majorRespond(x,msg,index);save();showChat(x.id);return;}
  add(x.id,ch.label,{mine:true,answerTo:msg.id});
  const outcome=ch.outcome||'unresolved';
