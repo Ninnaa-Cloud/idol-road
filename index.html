@@ -204,7 +204,7 @@ function idolXRomanPart(v){const pairs={'きゃ':'kya','きゅ':'kyu','きょ':'
 function idolXDismissedAccount(account){
  const match=/^member:(.+)$/.exec(String(account||''));
  if(!match)return false;
- return (state.groups||[]).some(g=>(g.members||[]).some(m=>String(m.id)===match[1]&&m.idolRoadDismissed));
+ return (state.groups||[]).some(g=>(g.members||[]).some(m=>String(m.id)===match[1]&&m.idolRoadDismissed)|| (g.irDepartureHistory||[]).some(h=>String(h.memberId)===match[1]));
 }
 function idolXPosts(){state.idolXPosts=(state.idolXPosts||[]).filter(p=>!idolXDismissedAccount(p.account));return state.idolXPosts}
 function idolXAdd(account,name,handle,body,photoId=null,repostOf=null){if(idolXDismissedAccount(account))return null;const p={id:'xp'+Date.now()+'_'+Math.random().toString(36).slice(2,9),account,name,handle,body,date:today(),photoId,repostOf,likes:0};idolXPosts().unshift(p);return p}
@@ -4007,7 +4007,21 @@ function personality(m,t){const mb=String(m.mbti||'');if(mb.startsWith('I'))retu
 function makeChoices(topic){return topic.slice(1).map((label,i)=>({label,outcome:i===0?'resolved':i===1?'resolved':'unresolved'}))}
 function activeEligible(topic,g){if(topic>=5&&topic<=9){return (g.members||[]).filter(housed).length>=2;}if(topic>=10&&topic<=14){return (state.idolRoadIncidents||[]).some(x=>String(x.groupId)===String(g.id)&&!x.closed&&x.decision!=='契約解除')}return true}
 function greeting(){for(const {id,m} of members()){const th=getThread(id);if(th.messages.length)continue;const texts=['はじめまして！これからよろしくお願いします！','今日からお世話になります。精一杯頑張ります！','よろしくお願いします！一生懸命頑張りますね。','これから色々学びたいです。よろしくお願いします！','今日からよろしくお願いします。少し緊張しています！'];add(id,personality(m,texts[store().serial%texts.length]),{kind:'greeting'})}}
-function syncIncidents(){window.IDOL_ROAD_INCIDENTS?.ensureResumeNotices?.();const st=store();for(const x of state.idolRoadMemberLines||[]){const id=String(x.memberId);if(!members().some(m=>m.id===id))continue;const key=String(x.id||`${x.memberId}:${x.date}:${x.text}`);if(st.incidentIds.includes(key))continue;st.incidentIds.push(key);const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(x.incidentId));const opts=x.resumeRequest?[{label:'活動再開を承認する',resumeApproval:true}]:inc&&inc.status!=='完了'?inc.status==='処分待ち'?[{label:'活動休止（1ヶ月）',incidentDecision:'活動休止',months:1},{label:'活動休止（2ヶ月）',incidentDecision:'活動休止',months:2},{label:'活動休止（3ヶ月）',incidentDecision:'活動休止',months:3},{label:'契約解除',incidentDecision:'契約解除'},{label:'処分を見送る',incidentDecision:'処分を見送る'}]:inc.status==='事実確認中'?(inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}]):inc.status==='未確認'?[{label:'本人に事実確認する',incidentDecision:'事実確認中'}]:null:null;add(id,x.text,{kind:'incident',level:'incident',incidentId:x.incidentId,choices:opts,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey()});} }
+function syncIncidents(){
+ window.IDOL_ROAD_INCIDENTS?.ensureResumeNotices?.();
+ const todayKey=dateKey();
+ for(const x of members()){
+  const m=x.m;
+  if(m.idolRoadDismissed||!m.idolRoadPauseUntil||m.idolRoadPauseUntil>todayKey)continue;
+  m.idolRoadResumePending=true;
+  const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(m.idolRoadPauseIncident))||(state.idolRoadIncidents||[]).find(v=>String(v.memberId)===String(x.id)&&v.decision==='活動休止');
+  if(!inc)continue;
+  const id='resume_'+String(inc.id)+'_'+String(x.id);
+  state.idolRoadMemberLines??=[];
+  if(!state.idolRoadMemberLines.some(v=>String(v.id)===id))state.idolRoadMemberLines.unshift({id,date:todayKey,groupId:x.g.id,memberId:x.id,member:x.name,text:'お疲れさまです。活動休止の期間が終わりました。休止中に自分なりにいろいろ考えて、また活動を頑張りたいと思っています。復帰について相談させてもらえますか？',read:false,incidentId:inc.id,resumeRequest:true});
+  m.idolRoadResumeLineSent=true;
+ }
+ const st=store();for(const x of state.idolRoadMemberLines||[]){const id=String(x.memberId);if(!members().some(m=>m.id===id))continue;const key=String(x.id||`${x.memberId}:${x.date}:${x.text}`);if(st.incidentIds.includes(key))continue;st.incidentIds.push(key);const inc=(state.idolRoadIncidents||[]).find(v=>String(v.id)===String(x.incidentId));const opts=x.resumeRequest?[{label:'活動再開を承認する',resumeApproval:true}]:inc&&inc.status!=='完了'?inc.status==='処分待ち'?[{label:'活動休止（1ヶ月）',incidentDecision:'活動休止',months:1},{label:'活動休止（2ヶ月）',incidentDecision:'活動休止',months:2},{label:'活動休止（3ヶ月）',incidentDecision:'活動休止',months:3},{label:'契約解除',incidentDecision:'契約解除'},{label:'処分を見送る',incidentDecision:'処分を見送る'}]:inc.status==='事実確認中'?(inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}]):inc.status==='未確認'?[{label:'本人に事実確認する',incidentDecision:'事実確認中'}]:null:null;add(id,x.text,{kind:'incident',level:'incident',incidentId:x.incidentId,choices:opts,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey()});} }
 // Major consultations — attached to the existing single member LINE thread.
 const majorCfg={motivation:{priority:4,cooldown:30},pressure:{priority:5,cooldown:30},conflict:{priority:3,cooldown:7},graduation:{priority:1,cooldown:90},leave:{priority:2,cooldown:7}};
 const randomBetween=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
@@ -4181,8 +4195,8 @@ function tick(){
     const mediumReady=!last.medium||days(cursor,last.medium)>=18;
     const lightReady=!last.light||days(cursor,last.light)>=7;
     let level=null;
-    if(mediumReady&&Math.random()<0.035)level='medium';
-    else if(lightReady&&Math.random()<0.09)level='light';
+    if(mediumReady&&Math.random()<0.07)level='medium';
+    else if(lightReady&&Math.random()<0.16)level='light';
     if(!level)continue;
     const topics=level==='medium'?mediumTopics:lightTopics;
     const pool=topics.map((topic,i)=>({topic,i})).filter(v=>level!=='medium'||activeEligible(v.i,x.g));
@@ -4735,6 +4749,35 @@ tick();
     return true;
   }
   if(repair())render();
+})();
+</script>
+<script>
+/* v108: Retired member cleanup. Keep historical records, never erase accounting or event data. */
+(function(){
+ const todayKey=()=>`${state.year}-${String(state.month).padStart(2,'0')}-${String(state.day).padStart(2,'0')}`;
+ function clean(){
+  let changed=false;const today=todayKey();
+  for(const g of state.groups||[]){
+   g.irDepartureHistory??=[];
+   for(let i=(g.members||[]).length-1;i>=0;i--){
+    const m=g.members[i];if(!m?.idolRoadDismissed)continue;
+    const inc=(state.idolRoadIncidents||[]).filter(v=>String(v.memberId)===String(m.id)&&v.decision==='契約解除').sort((a,b)=>String(b.resolvedDate||b.date).localeCompare(String(a.resolvedDate||a.date)))[0];
+    const dismissedDate=m.idolRoadDismissedDate||inc?.resolvedDate||inc?.date;
+    if(!dismissedDate||today<=dismissedDate)continue;
+    if(!g.irDepartureHistory.some(h=>String(h.memberId)===String(m.id)))g.irDepartureHistory.push({memberId:String(m.id),name:m.stageName||m.name,date:dismissedDate,type:'解雇',reason:'契約解除'});
+    g.members.splice(i,1);changed=true;
+   }
+  }
+  const retired=new Set((state.groups||[]).flatMap(g=>(g.irDepartureHistory||[]).map(h=>String(h.memberId||''))).filter(Boolean));
+  for(const g of state.groups||[])for(const m of g.members||[])if(m.idolRoadDismissed)retired.add(String(m.id));
+  const old=(state.idolXPosts||[]).length;
+  state.idolXPosts=(state.idolXPosts||[]).filter(p=>!retired.has(String(p.account||'').replace(/^member:/,'')));
+  if(old!==state.idolXPosts.length)changed=true;
+  if(changed)save();
+ }
+ clean();
+ const prior=addDay;addDay=function(){prior();clean()};
+ window.IDOL_ROAD_RETIRED_CLEANUP=clean;
 })();
 </script>
 </body></html>
