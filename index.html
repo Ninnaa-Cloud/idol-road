@@ -1800,7 +1800,7 @@ function stageMembers(x,i,r){const ids=new Set((r?.participatingMemberIds||[]).m
 function spendStage(x,i,stage,r){const period=interval(x,i,stage),ms=irLiveStageEligible(x,i,stage,r);if(!period||!ms.length)return [];const [start,end]=period;for(const m of ms)if(!irFixedTimeCanJoin(m,start,end))return [];for(const m of ms)irFixedTimeSpend(m,start,end);r.participatingMemberIds=ms.map(m=>String(m.id));r.stageMemberIds??={};r.stageMemberIds[stage]=[...r.participatingMemberIds];return ms;}
 function stageWarning(x,i,stage,r){const period=interval(x,i,stage);if(!period)return '移動時間を取得できません。';if(period[0]<0||period[1]>24)return '活動時間が当日の0:00〜24:00を超えています。';const eligibleIds=new Set(irLiveStageEligible(x,i,stage,r).map(m=>String(m.id))),previous=r?.participatingMemberIds,all=roster(x,i).filter(m=>!previous||previous.includes(String(m.id)));const missing=all.filter(m=>!eligibleIds.has(String(m.id)));if(!eligibleIds.size)return 'この段階に参加できるメンバーがいません。';return missing.length?'次のメンバーは年齢制限または時間不足で不参加になります：'+missing.map(m=>m.stageName||m.name).join('、')+'。残りのメンバーで進めますか？':'';}
 function membersOf(x,i=0,r){return r?.participatingMemberIds?stageMembers(x,i,r):roster(x,i);}
-function cheki(x,own,ids){const allowed=new Set((ids||[]).map(String));const rows=roster(x,0).filter(m=>allowed.has(String(m.id))).map(m=>{const grade=popularityDetails(m).grade,count=Math.round(Math.max(0,own)*(RATES[grade]||0));return {memberId:m.id,name:(typeof m.stageName==='string'&&m.stageName.trim())?m.stageName.trim():(m.name||'メンバー'),count,revenue:count*1000};});return {rows,total:rows.reduce((a,r)=>a+r.revenue,0)};}
+function cheki(x,own,ids){const allowed=new Set((ids||[]).map(String));const rows=(groupOf(x)?.members||[]).filter(m=>allowed.has(String(m.id))).map(m=>{const grade=popularityDetails(m).grade,count=Math.round(Math.max(0,own)*(RATES[grade]||0));return {memberId:m.id,name:(typeof m.stageName==='string'&&m.stageName.trim())?m.stageName.trim():(m.name||'メンバー'),count,revenue:count*1000};});return {rows,total:rows.reduce((a,r)=>a+r.revenue,0)};}
 function hostedActual(x,i){const f=x.attendanceForecasts?.[i]||{},cap=Number(stopOf(x,i).capacity||x.capacity)||0;const original=f.actual!==undefined&&f.actual!==null&&Number.isFinite(Number(f.actual))?Math.max(0,Math.min(cap,Math.round(Number(f.actual)))):liveDrawAttendance(forecastOf(x,i),cap);return window.IDOL_ROAD_SCANDAL_EFFECTS?window.IDOL_ROAD_SCANDAL_EFFECTS.attendance(x.groupId,dayOf(x,i),original):original;}
 function hostedSettlement(x,i,actual){
  if(x.type!=='joint')return null;
@@ -1894,7 +1894,7 @@ function action(x,i,stage){
   r.minutes+=x.graduationId?240:180;r.stage=(isExternal(x)||x.benefit)?'benefit':'finished';
   if(r.stage==='finished'){r.financial=finance(x,i,r.actual,r.ownActual);r.finished=true;}
  }else if(stage==='benefit'&&r.stage==='benefit'){
-  const available=membersOf(x,i).filter(m=>memberDayHours(m)>=1);
+  const eligibleIds=new Set((r.participatingMemberIds||r.stageMemberIds?.perform||[]).map(String));const available=(groupOf(x)?.members||[]).filter(m=>eligibleIds.has(String(m.id))&&memberDayHours(m)>=1);
   if(!available.length)return alert('特典会に参加できるメンバーがいません。');
   r.participatingMemberIds=available.map(m=>String(m.id));
   available.forEach(m=>useMemberHours(m,1));
