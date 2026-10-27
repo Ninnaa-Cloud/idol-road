@@ -847,7 +847,30 @@ renderGroups=function(){
 /* Group popularity: arithmetic mean of current members' popularity, plus
    persisted XP earned from group activities. Membership changes recalculate
    the mean immediately; earned group XP remains with the group. */
+function irMusicActivityAmount(r){return r.tier==='BS/CS'?20:r.tier==='地上波深夜'?40:r.tier==='特番'?120:80;}
+function irFestivalActivityAmount(slot){return slot.stage==='大'?100:slot.stage==='中'?60:30;}
 function groupPopularityPoints(g){
+ // Recover group activity XP from legacy completed events once per saved group.
+ if(g&&!g._irGroupActivityReconciledV136){
+  const base=Math.max(0,Number(g.groupPopularityActivityXp)||0);
+  let total=0;
+  for(const e of state.externalSettlements||[]){
+   if(String(e.groupId)!==String(g.id))continue;
+   const inv=(state.externalInvites||[]).find(x=>String(x.id)===String(e.id));
+   if(inv&&inv._irGroupActivityCreditedV136)continue;
+   total+=Math.max(1,Math.round(10+Math.max(0,Number(e.own)||0)*.1));
+   if(inv)inv._irGroupActivityCreditedV136=true;
+  }
+  // Older saves already holding activity points may include previously awarded events.
+  // Only reconstruct from old settlements when the stored activity value is zero.
+  if(base===0)g.groupPopularityActivityXp=Math.min(8000,total);
+  for(const r of state.musicTV||[]){if(String(r.groupId)!==String(g.id)||r._irGroupActivityCreditedV136||!r.effectApplied)continue;
+   g.groupPopularityActivityXp=Math.min(8000,(Number(g.groupPopularityActivityXp)||0)+irMusicActivityAmount(r));r._irGroupActivityCreditedV136=true;}
+  for(const inv of state.festivalData?.invitations||[]){if(String(inv.groupId)!==String(g.id))continue;
+   for(const slot of inv.slots||[]){if(slot.status!=='done'||slot._irGroupActivityCreditedV136)continue;
+    g.groupPopularityActivityXp=Math.min(8000,(Number(g.groupPopularityActivityXp)||0)+irFestivalActivityAmount(slot));slot._irGroupActivityCreditedV136=true;}}
+  g._irGroupActivityReconciledV136=true;
+ }
  const members=Array.isArray(g.members)?g.members:[];
  const average=members.length?Math.round(members.reduce((sum,m)=>sum+popularityPoints(m),0)/members.length):0;
  const bonus=Math.max(0,Number(g.groupPopularityActivityXp)||0);
@@ -859,6 +882,7 @@ function groupPopularityDetails(g){
  return {grade:GRADE_ORDER[p.rank],xp:p.xp,max:p.rank===7&&p.xp>=1000,average,bonus,total};
 }
 function addGroupPopularityExperience(g,amount){
+ if(g&&!g._irGroupActivityReconciledV136)groupPopularityPoints(g);
  const delta=Number(amount);
  if(!Number.isFinite(delta)||delta<=0)return 0;
  const old=Math.max(0,Number(g.groupPopularityActivityXp)||0);
@@ -1651,7 +1675,7 @@ function extSettle(){
   inv.travelMethod=travel.transport;inv.travelCost=travel.travelTotal;
   inv.status='completed';inv.ownAttendance=own;inv.totalAttendance=total;inv.grossSettlement=Math.round(amount);inv.settlement=Math.round(amount)-inv.travelCost;
   state.externalSettlements??=[];state.externalSettlements.push({id:inv.id,date:inv.date,groupId:inv.groupId,event:inv.event,own,total,amount:inv.settlement,grossAmount:inv.grossSettlement,travelCost:inv.travelCost,travelMethod:inv.travelMethod});
-  if(g)addGroupPopularityExperience(g,Math.max(1,Math.round(10+own*.1)));
+  if(g){addGroupPopularityExperience(g,Math.max(1,Math.round(10+own*.1)));inv._irGroupActivityCreditedV136=true;}
 
  }
 }
@@ -3019,7 +3043,7 @@ function execute(r){if(!r||r.status!=='accepted'||today()!==(r.recordDate||r.bro
  for(const m of eligible){if(!useMemberHours(m,duration))return false;addSkillExperience(m,'歌',8);addSkillExperience(m,'トーク',5);}
  r.participants=eligible.map(m=>m.stageName||m.name);r.status=r.kind==='live'?'broadcasted':'recorded';r.executed=today();syncSchedule(r);if(r.kind==='live')applyBroadcast(r);else {r.effectAppliedForFee=true;payFee(r);}notice(`${r.name}の${r.kind==='live'?'生放送出演':'収録'}が完了しました。`);save();render();return true;
 }
-function applyBroadcast(r){if(r.effectApplied||!['recorded','broadcasted'].includes(r.status))return;const g=groups().find(x=>String(x.id)===String(r.groupId));if(!g)return;const base=r.tier==='BS/CS'?40:r.tier==='地上波深夜'?100:r.tier==='地上波'?250:500;const gain=r.kind==='feature'&&!r.recordDate?Math.round(base*.55):base;g.fame=idolFameAdd(Math.max(fame(g),Number(g.fame||0)),gain);r.fameGain=gain;r.effectApplied=true;r.status='broadcasted';payFee(r);const t=(state.productions||[]).find(x=>String(x.id)===String(r.trackId));if(t){t.tvExposure=(Number(t.tvExposure)||0)+gain;t.tvBuzzBoost=(Number(t.tvBuzzBoost)||0)+Math.round(gain/5);}notice(`${r.name}が放送され、${g.name}の知名度が${gain}上昇しました。`);}
+function applyBroadcast(r){if(r.effectApplied||!['recorded','broadcasted'].includes(r.status))return;const g=groups().find(x=>String(x.id)===String(r.groupId));if(!g)return;const base=r.tier==='BS/CS'?40:r.tier==='地上波深夜'?100:r.tier==='地上波'?250:500;const gain=r.kind==='feature'&&!r.recordDate?Math.round(base*.55):base;g.fame=idolFameAdd(Math.max(fame(g),Number(g.fame||0)),gain);r.fameGain=gain;r.effectApplied=true;r.status='broadcasted';if(!r._irGroupActivityCreditedV136){addGroupPopularityExperience(g,irMusicActivityAmount(r));r._irGroupActivityCreditedV136=true;}payFee(r);const t=(state.productions||[]).find(x=>String(x.id)===String(r.trackId));if(t){t.tvExposure=(Number(t.tvExposure)||0)+gain;t.tvBuzzBoost=(Number(t.tvBuzzBoost)||0)+Math.round(gain/5);}notice(`${r.name}が放送され、${g.name}の知名度が${gain}上昇しました。`);}
 function onLeavingDay(){for(const r of records()){
  if(r.status==='offered'&&today()>=r.deadline){r.status='expired';addMail('inbox',`【回答期限切れ】${r.name}`,`${state.agency} ご担当者様\n\nご出演の回答期限を過ぎましたため、今回のご依頼は辞退扱いとさせていただきます。\n\n${r.station} 制作担当`,r.station,{musicTVId:r.id});}
  if(r.status==='accepted'&&(r.recordDate||r.kind==='live')&&(r.recordDate||r.broadcastDate)===today()){r.status='missed';syncSchedule(r);addMail('inbox',`【収録・出演欠席のご連絡】${r.name}`,`${state.agency} ご担当者様\n\n本日予定しておりました${r.name}へのご出演が確認できませんでした。今回の放送予定はキャンセルとさせていただきます。\n\n${r.station} 制作担当`,r.station,{musicTVId:r.id});notice(`${r.name}は未実行のため欠席扱いとなりました。`);}
@@ -3665,7 +3689,7 @@ function completeFestival(i,s){
  const g=group(i.groupId);if(!g){alert('出演するグループが見つかりません。');return;}
  s._executing=true;
  try{
- const ms=members(g),base={'小':1000,'中':5000,'大':20000}[s.stage],ratio=Math.min(1,Math.max(.12,score(g,[i.festival,i.kind])/8000)),audience=Math.min(base,Math.round(base*ratio*(.8+Math.random()*.4))),rate=audience/base;s.attendance=audience;s.result=rate>=.9?'大成功':rate>=.7?'成功':rate>=.4?'普通':'不調';s.status='done';const growth=(i.kind==='idol'?{'小':[15,25,5,10,50,250],'中':[30,50,15,25,250,1000],'大':[60,90,30,50,1000,4000]}:{'小':[10,20,25,40,250,1000],'中':[25,40,50,80,1000,4000],'大':[50,75,100,150,4000,15000]})[s.stage],factor=s.result==='大成功'?1.2:s.result==='成功'?1:s.result==='普通'?.8:.6;const gp=Math.round(R(growth[0],growth[1])*factor),gf=Math.round(R(growth[2],growth[3])*factor),followers=Math.round(R(growth[4],growth[5])*factor);if(g){g.fameXp=(Number(g.fameXp)||0)+gf;g.festivalPopularityXp=(Number(g.festivalPopularityXp)||0)+gp;state.idolXFollowers??={};state.idolXFollowers['group:'+g.id]=(Number(state.idolXFollowers['group:'+g.id])||0)+followers;for(const m of ms){m.popularityActivityXp=(Number(m.popularityActivityXp)||0)+Math.round(gp*.5);m.fatigue=Math.min(100,(Number(m.fatigue)||0)+R(...({'小':[5,10],'中':[10,15],'大':[15,25]}[s.stage])));m.mental=Math.max(0,Math.min(100,(Number(m.mental)||50)+(s.result==='大成功'?R(5,10):s.result==='成功'?R(3,5):s.result==='普通'?R(0,2):-R(3,5))));state.idolXFollowers['member:'+m.id]=(Number(state.idolXFollowers['member:'+m.id])||0)+Math.round(followers*.15)}social(i,s,g,'after')}state.agencyFunds=(Number(state.agencyFunds)||0)+s.fee;if(window.IDOL_ACCOUNTING)window.IDOL_ACCOUNTING.record(s.fee,g.id,null,'festival',i.festival+' 出演料');notice(`${i.groupName} ${i.festival}：${s.result}／観客${audience.toLocaleString()}人`)
+ const ms=members(g),base={'小':1000,'中':5000,'大':20000}[s.stage],ratio=Math.min(1,Math.max(.12,score(g,[i.festival,i.kind])/8000)),audience=Math.min(base,Math.round(base*ratio*(.8+Math.random()*.4))),rate=audience/base;s.attendance=audience;s.result=rate>=.9?'大成功':rate>=.7?'成功':rate>=.4?'普通':'不調';s.status='done';if(!s._irGroupActivityCreditedV136){addGroupPopularityExperience(g,irFestivalActivityAmount(s));s._irGroupActivityCreditedV136=true;}const growth=(i.kind==='idol'?{'小':[15,25,5,10,50,250],'中':[30,50,15,25,250,1000],'大':[60,90,30,50,1000,4000]}:{'小':[10,20,25,40,250,1000],'中':[25,40,50,80,1000,4000],'大':[50,75,100,150,4000,15000]})[s.stage],factor=s.result==='大成功'?1.2:s.result==='成功'?1:s.result==='普通'?.8:.6;const gp=Math.round(R(growth[0],growth[1])*factor),gf=Math.round(R(growth[2],growth[3])*factor),followers=Math.round(R(growth[4],growth[5])*factor);if(g){g.fameXp=(Number(g.fameXp)||0)+gf;g.festivalPopularityXp=(Number(g.festivalPopularityXp)||0)+gp;state.idolXFollowers??={};state.idolXFollowers['group:'+g.id]=(Number(state.idolXFollowers['group:'+g.id])||0)+followers;for(const m of ms){m.popularityActivityXp=(Number(m.popularityActivityXp)||0)+Math.round(gp*.5);m.fatigue=Math.min(100,(Number(m.fatigue)||0)+R(...({'小':[5,10],'中':[10,15],'大':[15,25]}[s.stage])));m.mental=Math.max(0,Math.min(100,(Number(m.mental)||50)+(s.result==='大成功'?R(5,10):s.result==='成功'?R(3,5):s.result==='普通'?R(0,2):-R(3,5))));state.idolXFollowers['member:'+m.id]=(Number(state.idolXFollowers['member:'+m.id])||0)+Math.round(followers*.15)}social(i,s,g,'after')}state.agencyFunds=(Number(state.agencyFunds)||0)+s.fee;if(window.IDOL_ACCOUNTING)window.IDOL_ACCOUNTING.record(s.fee,g.id,null,'festival',i.festival+' 出演料');notice(`${i.groupName} ${i.festival}：${s.result}／観客${audience.toLocaleString()}人`)
  const event=(state.schedule||[]).find(e=>e.festivalSlotId===s.id);if(event)event.done=true;
  s.finishedOn=key();s.travelled=true;
  if(i.status==='accepted'&&i.slots.every(z=>['done','cancelled'].includes(z.status)))i.status='finished';
@@ -5126,4 +5150,60 @@ function irXScandalReactionScale(g){
  window.IDOL_ROAD_RETIRED_CLEANUP=clean;
 })();
 </script>
-<script>window.addEventListener('load',()=>{try{const x=JSON.parse(localStorage.getItem('IDOL_ROAD_NEXT_DIAGNOSTIC')||'null');if(x&&x.phase!=='完了'){const status=document.getElementById('status');if(status)status.textContent='前回の翌日処理：'+x.phase+'（'+x.day+'）'}}catch(e){}});</script></body></html>
+<script>window.addEventListener('load',()=>{try{const x=JSON.parse(localStorage.getItem('IDOL_ROAD_NEXT_DIAGNOSTIC')||'null');if(x&&x.phase!=='完了'){const status=document.getElementById('status');if(status)status.textContent='前回の翌日処理：'+x.phase+'（'+x.day+'）'}}catch(e){}});</script>
+<script id="ir-hosted-group-bonus-v137">
+/* Hosted events: modest audience-based bonus, capped at 50 XP per group per month.
+   Only confirmed finished performances qualify; no planned or cancelled performances. */
+(function(){
+ const LIMIT=50;
+ function eligibleRun(l,i){const runs=l.liveDayRuns||{};const r=runs[i]||runs[String(i)];return !!(r&&(r.finished===true||r.stage==='finished'));}
+ function calculate(l,i){
+  const f=(l.attendanceForecasts||[])[i]||{};
+  const attendance=Math.max(0,Number(f.actual)||0);
+  const joint=l.type==='joint'||l.mode==='joint';
+  return Math.min(joint?12:22,(joint?5:10)+Math.min(joint?7:12,Math.round(attendance/100)));
+ }
+ function reconcile(g){
+  if(!g||!Array.isArray(state.hostedLives))return;
+  // Reuse stored credited values so repeated renders / reloads never double-award.
+  const events=[];
+  for(const l of state.hostedLives){
+   if(String(l.groupId)!==String(g.id)||l.type==='external'||String(l.id||'').startsWith('external_'))continue;
+   const dates=l.dates||[];
+   for(let i=0;i<dates.length;i++){
+    if(!eligibleRun(l,i))continue;
+    events.push({l,i,date:dates[i],month:String(dates[i]).slice(0,7)});
+   }
+  }
+  events.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.l.id).localeCompare(String(b.l.id))||a.i-b.i);
+  const usage=Object.create(null);
+  for(const e of events){
+   const credits=e.l._irHostedGroupAwardsV137??={};
+   const key=String(e.i)+':'+e.date;
+   if(Object.prototype.hasOwnProperty.call(credits,key)){
+    usage[e.month]=(usage[e.month]||0)+Math.max(0,Number(credits[key])||0);
+    continue;
+   }
+   const room=Math.max(0,LIMIT-(usage[e.month]||0));
+   const amount=Math.min(room,calculate(e.l,e.i));
+   credits[key]=amount;
+   usage[e.month]=(usage[e.month]||0)+amount;
+   if(amount>0){
+    const current=Math.max(0,Number(g.groupPopularityActivityXp)||0);
+    g.groupPopularityActivityXp=Math.min(8000,current+amount);
+   }
+  }
+ }
+ const oldPoints=groupPopularityPoints;
+ groupPopularityPoints=function(g){
+  const p=oldPoints(g);
+  reconcile(g);
+  if(!g)return p;
+  const bonus=Math.max(0,Number(g.groupPopularityActivityXp)||0);
+  return {...p,bonus,total:Math.min(8000,p.average+bonus)};
+ };
+ const oldSave=save;
+ save=function(){try{for(const g of state.groups||[])groupPopularityPoints(g)}catch(e){console.warn('Hosted group bonus:',e)}return oldSave()};
+})();
+</script>
+</body></html>
