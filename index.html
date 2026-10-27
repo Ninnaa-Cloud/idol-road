@@ -284,9 +284,10 @@ const oldRender=render;render=function(){oldRender();if(state.tab==='アイド�
 function mailItems(){
  state.mailItems??=[];
  // migrate legacy sent messages without duplicating
+ const existingMailIds=new Set(state.mailItems.map(x=>x.id));
  (state.outbox||[]).forEach((m,i)=>{
   const id='legacy-'+i;
-  if(!state.mailItems.some(x=>x.id===id))state.mailItems.push({id,folder:'sent',subject:'オーディション確認：'+m.to,to:m.to,body:m.body,date:m.date,read:true});
+  if(!existingMailIds.has(id)){state.mailItems.push({id,folder:'sent',subject:'オーディション確認：'+m.to,to:m.to,body:m.body,date:m.date,read:true});existingMailIds.add(id)}
  });
  return state.mailItems;
 }
