@@ -3246,7 +3246,7 @@ function online(d,onlyKey){for(const g of groups()){let ms=members(g);for(const 
  }}save();}
 function liveSales(x,i,r){const d=(x.dates||[])[i]||x.date||date();const g=group(x.groupId)||group(x.group?.id);if(!g||!x.merch||r.merchandiseProcessed)return;
  const attendees=Math.max(0,Number(r.ownActual??r.actual??x.attendanceForecasts?.[i]?.actual)||0);const ms=members(g);let entries=[];for(const p of PRODUCTS){let desired=Math.round(attendees*random(p[7],p[8])/100*(p[0]==='photo'?random(1,1.5):1));let targets=p[4]?ms.map(m=>({m,w:weight(m)})):[{m:null,w:1}];let sum=targets.reduce((a,b)=>a+b.w,0);let remaining=desired;targets.forEach((t,j)=>{let qty=j===targets.length-1?remaining:Math.min(remaining,Math.round(desired*t.w/sum));remaining-=qty;let sold=sale(g,p,t.m,qty,'ライブ物販',d);if(sold)entries.push({name:p[1]+(t.m?'（'+t.m.name+'）':''),memberId:t.m?String(t.m.id):null,qty:sold,revenue:sold*p[3]});});}
- r.merchandise={entries,total:entries.reduce((a,e)=>a+e.revenue,0),qty:entries.reduce((a,e)=>a+e.qty,0)};r.merchandiseProcessed=true;for(const entry of entries){if(entry.revenue){state.agencyFunds=(Number(state.agencyFunds)||0)+entry.revenue;window.IDOL_ACCOUNTING?.record(entry.revenue,r.groupId??null,entry.memberId,'merch','ライブ グッズ売上');}}save();}
+ r.merchandise={entries,total:entries.reduce((a,e)=>a+e.revenue,0),qty:entries.reduce((a,e)=>a+e.qty,0)};r.merchandiseProcessed=true;for(const entry of entries){if(entry.revenue){state.agencyFunds=(Number(state.agencyFunds)||0)+entry.revenue;window.IDOL_ACCOUNTING?.record(entry.revenue,g.id,entry.memberId,'merch','ライブ グッズ売上');}}save();}
 function settleCompleted(){const done=new Set();for(const x of state.hostedLives||[]){for(let i=0;i<(x.dates||[]).length;i++){const r=x.liveDayRuns?.[i];if(r?.finished){liveSales(x,i,r);if(x.externalInviteId)done.add(String(x.externalInviteId));}}}for(const x of state.externalInvites||[]){if(x.liveDayRun?.finished&&!done.has(String(x.id)))liveSales({...x,merch:x.merch??x.merchandise},0,x.liveDayRun)}}
 function daily(){cancelGraduates();deliveries(date());settleCompleted();online(date());}
 function renderMerch(){if(state.tab!=='経営'||state.sub!=='制作')return;const container=document.getElementById('content');if(!container)return;
@@ -3770,13 +3770,37 @@ const getFunds=()=>Number.isFinite(Number(state.agencyFunds))?Number(state.agenc
 const record=(amount,kind,group,member,description,category,transactionDate)=>{let a=account();a.entries.push({id:'acc-'+Date.now()+'-'+Math.random().toString(36).slice(2),date:transactionDate||today(),amount:Number(amount)||0,kind,groupId:group==null?'':String(group),memberId:member==null?'':String(member),description,category:category||'other'});};
 const relevant=(a,month)=>a.entries.filter(e=>e.date.slice(0,7)===month&&e.kind==='operation');
 const totals=es=>({income:es.reduce((v,e)=>v+Math.max(0,e.amount),0),expense:es.reduce((v,e)=>v+Math.max(0,-e.amount),0)});
+// Repair legacy live-merch ledger rows recorded without their group ID.
+// The merchandise sales history is the authoritative source; never add a new
+// transaction or change an amount. Ambiguous matches are left untouched.
+function repairLegacyMerchGroupIds(){
+ const ledger=account().entries;
+ const history=Array.isArray(state.merchandise?.history)?state.merchandise.history:[];
+ if(!history.length)return false;
+ const sales=new Map();
+ for(const h of history){
+  if(h.channel!=='ライブ物販'||!h.groupId||!Number(h.revenue))continue;
+  const k=JSON.stringify([String(h.date),String(h.memberId??''),Number(h.revenue)]);
+  if(!sales.has(k))sales.set(k,new Set());
+  sales.get(k).add(String(h.groupId));
+ }
+ let changed=false;
+ for(const e of ledger){
+  if(e.groupId||e.kind!=='operation'||e.category!=='merch'||e.description!=='ライブ グッズ売上')continue;
+  const k=JSON.stringify([String(e.date),String(e.memberId??''),Number(e.amount)]);
+  const gids=sales.get(k);
+  if(gids?.size===1){e.groupId=[...gids][0];changed=true;}
+ }
+ return changed;
+}
+
 const detailList=es=>`<div class="ir-account-details" tabindex="0" aria-label="収支の詳細（スクロール可能）"><table><thead><tr><th>日付</th><th>区分</th><th>内容</th><th>金額</th></tr></thead><tbody>${es.slice().reverse().map(e=>`<tr><td>${esc(e.date)}</td><td>${e.amount>=0?'収入':'支出'}</td><td>${esc(e.description||e.category||'未分類')}</td><td style="color:${e.amount>=0?'#a8f2d0':'#ffb3bd'}">${e.amount>=0?'+':'−'}${yen(Math.abs(e.amount))}</td></tr>`).join('')||'<tr><td colspan="4">この月の取引はありません</td></tr>'}</tbody></table></div>`;
 const salaryOf=(g,m,es)=>{const mid=String(m.id??m.name),gid=groupId(g);const personal=es.filter(e=>e.groupId===gid&&e.memberId===mid&&['benefit','handshake','merch','personal','live_cheki'].includes(e.category)).reduce((a,e)=>a+e.amount,0);const gt=totals(es.filter(e=>e.groupId===gid&&e.category!=='salary'));const contract=String(m.contract?.salary||m.salaryContract||g.contract?.salary||g.salaryContract||'');const isShared=contract.includes('30%')||contract.includes('30％')||contract.includes('30%等分');const count=Math.max(1,groupMembers(g).length);return {personal,contract:contract||'個人売上90%＋月5万円保証',salary:isShared?Math.max(100000,Math.round(Math.max(0,gt.income-gt.expense)*.3/count)):Math.round(Math.max(0,personal)*.9)+50000};};
 function reconcile(){const a=account(),d=today();if(a.lastFunds===null){a.lastFunds=getFunds();a.lastDate=d;return;}const delta=getFunds()-a.lastFunds;if(Math.abs(delta)>.001){const bookedDate=a.lastDate&&String(a.lastDate).slice(0,7)!==period()?a.lastDate:d;record(delta,'operation',null,null,'ゲーム内収支（内訳未分類）','unclassified',bookedDate);a.lastFunds=getFunds();}a.lastDate=d;}
-function monthClose(){const a=account();if(state.day!==1)return;/* Capture any pending cash movement before closing the prior period. */if(a.lastDate&&String(a.lastDate).slice(0,7)!==period()&&a.lastFunds!==null){const delta=getFunds()-a.lastFunds;if(Math.abs(delta)>.001){record(delta,'operation',null,null,'月跨ぎ未分類収支','unclassified',a.lastDate);a.lastFunds=getFunds();}}const now=period();const dt=new Date(state.year,state.month-2,1);const prev=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');if(a.reports.some(r=>r.period===prev)||prev<(a.firstPeriod||period()))return;
+function monthClose(){repairLegacyMerchGroupIds();const a=account();if(state.day!==1)return;/* Capture any pending cash movement before closing the prior period. */if(a.lastDate&&String(a.lastDate).slice(0,7)!==period()&&a.lastFunds!==null){const delta=getFunds()-a.lastFunds;if(Math.abs(delta)>.001){record(delta,'operation',null,null,'月跨ぎ未分類収支','unclassified',a.lastDate);a.lastFunds=getFunds();}}const now=period();const dt=new Date(state.year,state.month-2,1);const prev=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');if(a.reports.some(r=>r.period===prev)||prev<(a.firstPeriod||period()))return;
 const es=relevant(a,prev),pays=[];let totalPay=0;for(const g of groupList())for(const m of groupMembers(g)){const info=salaryOf(g,m,es),amount=info.salary;totalPay+=amount;pays.push({group:groupId(g),groupName:g.name,member:String(m.id??m.name),memberName:m.name,personal:info.personal,contract:info.contract,amount});record(-amount,'operation',groupId(g),String(m.id??m.name),'月次メンバー給与','salary',prev+'-'+String(new Date(state.year,state.month-1,0).getDate()).padStart(2,'0'));}
 state.agencyFunds=getFunds()-totalPay;a.lastFunds=getFunds();const all=totals(relevant(a,prev));const groupReports=groupList().map(g=>{const t=totals(relevant(a,prev).filter(e=>e.groupId===groupId(g)));return {id:groupId(g),name:g.name,...t}});a.reports.push({period:prev,created:today(),income:all.income,expense:all.expense,closingFunds:getFunds(),loanBalance:a.loans,groupReports,pays,memberSales:pays.map(p=>({group:p.group,member:p.member,name:p.memberName,sales:p.personal})),transactions:relevant(a,prev).map(e=>({...e}))});save();}
-function summary(){const a=account(),es=relevant(a,period()),t=totals(es);return {a,es,t};}
+function summary(){repairLegacyMerchGroupIds();const a=account(),es=relevant(a,period()),t=totals(es);return {a,es,t};}
 function draw(){if(state.tab!=='経営'||state.sub!=='経理')return;const {a,es,t}=summary(),root=el('content');root.className='';const gs=groupList(),selected=gs.find(g=>groupId(g)===a.groupFilter),ms=gs.find(g=>groupId(g)===a.memberFilter);
 const buttons=(selectedValue,allText)=>`<button type="button" data-acc-filter="${selectedValue}" data-acc-id="all" class="${a[selectedValue]==='all'?'primary':''}">${allText}</button>`+gs.map(g=>`<button type="button" data-acc-filter="${selectedValue}" data-acc-id="${esc(groupId(g))}" class="${a[selectedValue]===groupId(g)?'primary':''}">${esc(g.name)}</button>`).join('');
 const ge=selected?es.filter(e=>e.groupId===groupId(selected)):es.filter(e=>e.groupId),gt=totals(ge);
