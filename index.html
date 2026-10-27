@@ -126,8 +126,9 @@ function drawHome(){
  const critical=(state.criticalDates||[]).filter(x=>x&&x.date===day);
  const handshakeToday=(state.handshakeEvents||[]).filter(x=>x&&x.date===day&&x.status==='booked');
  const liveToday=(state.hostedLives||[]).filter(x=>x&&(x.dates||[]).includes(day));
+ const birthdayToday=(state.birthdayEvents||[]).filter(x=>x&&x.date===day&&x.status==='booked');
  const box=make('div');box.className='ir-home-scroll';
- if(!schedules.length&&!critical.length&&!handshakeToday.length&&!liveToday.length&&![2,4].includes(dateObj().getDay()))make('p','本日の登録スケジュールはありません。',box);
+ if(!schedules.length&&!critical.length&&!handshakeToday.length&&!liveToday.length&&!birthdayToday.length&&![2,4].includes(dateObj().getDay()))make('p','本日の登録スケジュールはありません。',box);
  schedules.forEach(x=>{
   const b=make('button',(x.done?'✓ ':'● ')+(x.title||x.name||x.type||'予定'),box);
   b.className='ir-home-entry';b.onclick=()=>{
@@ -141,11 +142,13 @@ function drawHome(){
    else if(/ドラマ|映画/.test(label+' '+kind)){state.tab='活動';state.sub='ドラマ・映画'}
    else if(/バラエティ/.test(label+' '+kind)){state.tab='活動';state.sub='バラエティ番組'}
    else if(/ライブ|公演|フェス|対バン|ツアー/.test(label+' '+kind)){state.tab='活動';state.sub='ライブ'}
-   else if(/握手|写真会|ファンミ|生誕/.test(label+' '+kind)){state.tab='活動';state.sub='イベント'}
+   else if(/生誕/.test(label+' '+kind)){state.tab='活動';state.sub='生誕祭'}
+   else if(/握手|写真会|ファンミ/.test(label+' '+kind)){state.tab='活動';state.sub='イベント'}
    else {state.tab='スケジュール';state.sub='';calendarView={year:state.year,month:state.month}}
    save();render();
   };
  });
+ birthdayToday.forEach(x=>{if(schedules.some(y=>y&&(String(y.birthdayId||'')===String(x.id))))return;const b=make('button','生誕祭：'+(x.groupName||'')+' '+(x.memberName||'')+'（'+x.start+':00〜'+(Number(x.start)+3)+':00）',box);b.className='ir-home-entry';b.onclick=()=>{state.tab='活動';state.sub='生誕祭';save();render()}});
  handshakeToday.forEach(x=>{const b=make('button','握手会・写真会：'+(x.name||'開催予定'),box);b.className='ir-home-entry';b.onclick=()=>{state.tab='活動';state.sub='イベント';save();render()}});
  liveToday.forEach(x=>{const b=make('button','ライブ：'+(x.name||x.title||'開催予定'),box);b.className='ir-home-entry';b.onclick=()=>{state.tab='活動';state.sub='ライブ';save();render()}});
  critical.forEach(x=>{const b=make('button','重要：'+(x.title||x.type||'重大な出来事'),box);b.className='ir-home-entry';b.onclick=()=>{showDrawer('通知')}});
@@ -485,8 +488,13 @@ function idolXDailyFollowers(){
   targets['group:'+g.id]=idolXTargetFollowers((groupPopularityPoints(g).total+avg)/2);
   for(const m of members)targets['member:'+m.id]=idolXTargetFollowers(popularityPoints(m)*.7+popularitySkillPoints(m,'SNS')*.3);
  }
+ const fixedGraph=window.__idolRoadXFixedFollows();
+ const fixedCounts=Object.create(null);
+ for(const following of Object.values(fixedGraph)){
+  for(const id of following){fixedCounts[id]=(fixedCounts[id]||0)+1}
+ }
  for(const [id,target] of Object.entries(targets)){
-  const fixed=Object.values(window.__idolRoadXFixedFollows()).reduce((n,following)=>n+(following.includes(id)?1:0),0);
+  const fixed=fixedCounts[id]||0;
   const organicTarget=Math.max(0,target-fixed);
   const current=Math.max(0,Math.round(Number(state.idolXFollowers[id])||0));
   const gap=organicTarget-current;
@@ -2468,6 +2476,8 @@ window.IR_AUTO_BIRTHDAY=e=>{if(e.status!=='booked')return false;if(!e.travelPaid
 function bReport(e){const v=bVenue(e.venueId),j=(state.costumeJobs||[]).find(x=>x.id===e.costumeId),old=document.getElementById('bd-report');old?.remove();const wrap=document.createElement('div');wrap.id='bd-report';wrap.className='overlay';wrap.style.zIndex=110;wrap.innerHTML=`<div class="modal" style="max-width:720px;max-height:90vh;overflow:auto"><h2>生誕祭 結果レポート</h2><p>主役：${esc(e.memberName)}／${esc(e.groupName)}</p><p>開催日：${esc(e.date)} ${e.start}:00〜${e.start+3}:00</p><p>会場：${esc(v.name)}</p><p>申込人数：${e.apps.toLocaleString()}人</p><p>販売枚数：${e.sold.toLocaleString()}枚／${v.capacity.toLocaleString()}席</p><p>完売率：${(e.sold/v.capacity*100).toFixed(1)}％</p><p>売上：${money(e.sold*e.price)}</p><p>衣装：${esc(j?bCostumeName(j):'未選択')}</p><p>装飾：${esc(e.decoration==='luxury'?'豪華':e.decoration==='normal'?'普通':'装飾なし')}</p><button class="primary" id="bd-close-report">閉じる</button></div>`;document.body.append(wrap);wrap.querySelector('#bd-close-report').onclick=()=>wrap.remove()}
 function bTodaySchedule(){
  const todays=bEvents().filter(e=>e.status==='booked'&&e.date===day());
+ // Recover a missed ticket-finalization tick before enabling the event-day control.
+ for(const e of todays){if(e.salesStarted&&!e.salesDone){bCompleteSales(e);save()}}
  if(!todays.length)return '';
  return `<div class="ir-card" style="border:2px solid #fa91c0;padding:20px"><h2 style="font-size:26px;line-height:1.35;margin:0 0 16px">本日のスケジュール</h2>${todays.map(e=>{
   const v=bVenue(e.venueId),m=bMember(e),costumes=m?bCostumes(e.groupId,m):[];
