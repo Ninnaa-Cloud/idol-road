@@ -4035,7 +4035,65 @@ const mediumTopics=[
 ['グループの中で孤立している気がします。','詳しく聞かせて。','話す機会を作ろう。','まず気持ちを整理しよう。'],['輪に入るのが難しく感じます。','無理しなくていいよ。','一緒にきっかけを作ろう。','様子を見よう。'],['メンバーとの距離感が分かりません。','気持ちを聞かせて。','少しずつ話してみよう。','自分のペースでいいよ。'],['相談できる相手が少なくて不安です。','いつでも相談してね。','メンバーと話す機会を作ろう。','少し休もう。'],['グループで自分の居場所が分からなくなっています。','気持ちを聞かせて。','一緒に解決を考えよう。','今は焦らなくていいよ。'] ];
 function personality(m,t){const mb=String(m.mbti||'');if(mb.startsWith('I'))return t.replace('！','。');if(mb.startsWith('E'))return t.replace(/。$/,'！');return t}
 function makeChoices(topic){return topic.slice(1).map((label,i)=>({label,outcome:i===0?'resolved':i===1?'resolved':'unresolved'}))}
-function activeEligible(topic,g){if(topic>=5&&topic<=9){return (g.members||[]).filter(housed).length>=2;}if(topic>=10&&topic<=14){return (state.idolRoadIncidents||[]).some(x=>String(x.groupId)===String(g.id)&&!x.closed&&x.decision!=='契約解除')}return true}
+// Medium consultations: topic-specific acknowledgement for each of the three existing choices.
+// Keep the existing labels, housing decisions and unrelated LINE flows unchanged.
+const mediumAnswers=[
+['気持ちを聞いてもらえて、少し整理できそうです','落ち着いてから、もう一度話してみます','距離を置いてみますが、気まずさが残らないか心配です'],
+['意見が違ったところを整理してみます','相手がどう考えたのかも聞いてみます','時間を置いて、冷静になってから考えます'],
+['何がきっかけだったのか話してみます','話せる機会があれば、声をかけてみたいです','無理せず少しずつ関係を戻せたらと思います'],
+['苦手な振りを一つずつ見直してみたいです','できているところも大切にして練習します','少し休んでから追いつけるか、まだ不安です'],
+['あの言葉を聞いたときのことを話せてよかったです','勘違いだった可能性も考えてみます','気持ちが落ち着いてから向き合ってみます'],
+['生活音のことを話し合えるなら安心です','角が立たない伝え方を考えてみます','もう少し様子を見ますが、眠れない日が心配です'],
+['掃除の担当を見直せるなら助かります','みんなで負担を確認してみたいです','まず今の分担を書き出してみます'],
+['消灯時間を調整できたらありがたいです','生活時間について話し合ってみます','しばらく様子を見ますが、睡眠は確保したいです'],
+['一人で休める時間ができると助かります','共同生活の過ごし方を相談してみます','話を聞いてもらえて少し気が楽になりました'],
+['共有スペースのルールがあると使いやすいです','みんなの使い方も聞いてみます','何に困っているか、もう一度確認してみます'],
+['噂を見て不安になった理由を話せてよかったです','事実が分かるまで決めつけないようにします','少しSNSを見ない時間を作ってみます'],
+['まず睡眠を優先してみます','ネットの反応への向き合い方を考えたいです','今夜は画面を閉じて休んでみます'],
+['グループの雰囲気について話せてよかったです','みんなの気持ちも聞いてみたいです','しばらく様子を見ますが、まだ少し心配です'],
+['コメントを見すぎないようにします','必要な対応があるか一緒に考えたいです','今どう感じているか話せて少し楽になりました'],
+['いつもどおり接してみようと思います','相手の気持ちも確かめてみたいです','距離を置くと余計に気まずくならないか心配です'],
+['一人暮らしを認めてもらえて安心しました','1ヶ月後に改めて生活のことを相談します','今回は難しいんですね。今の暮らし方を考えてみます'],
+['退去を認めてもらえて助かります','1ヶ月だけ様子を見て、また相談します','退去できないのは残念ですが、もう少し考えます'],
+['通学しやすい場所に移れるなら助かります','1ヶ月後に通学との両立を見直します','今は変更できないんですね。通学方法も考えます'],
+['生活リズムを整えられそうで安心しました','1ヶ月後に生活の様子を報告します','今回は共同生活を続けてみます'],
+['家族と暮らす希望を聞いてもらえて嬉しいです','1ヶ月後に家族とも相談してみます','今は難しいんですね。家族にも伝えます'],
+['レッスンの負担を調整できるなら助かります','どの練習が負担か、詳しく伝えます','少し様子を見ますが、無理しないようにします'],
+['準備を見直せるなら安心です','不安なところを具体的に書き出します','無理せず一つずつ準備していきます'],
+['予定を調整してもらえると助かります','仕事と練習の優先順位を考えてみます','しばらく様子を見ますが、負担が増えたら相談します'],
+['挑戦したい仕事について話せて嬉しいです','目標に向けた計画を一緒に考えたいです','自分の希望をもう少し整理してみます'],
+['活動方針への意見を聞いてもらえてよかったです','グループの目標を確認してみます','少し時間を置いて考えてみます'],
+['孤立していると感じた場面を話せてよかったです','みんなと話せる機会があると嬉しいです','まず自分の気持ちを整理してみます'],
+['無理に輪に入らなくてもいいと思えて安心しました','話しかけるきっかけを一緒に考えたいです','しばらく様子を見ながら自分のペースで進みます'],
+['メンバーとの距離感について話せてよかったです','少しずつ話す機会を増やしてみます','自分のペースで関係を作ってみます'],
+['また相談していいと言ってもらえて安心しました','ほかのメンバーとも話せる機会が欲しいです','少し休んで気持ちを整えてみます'],
+['居場所が分からない気持ちを聞いてもらえてよかったです','どうしたら安心できるか一緒に考えたいです','焦らず、自分にできることを考えてみます']
+];
+function mediumAssessment(m,topic,index){
+ const mb=String(m.mbti||'').toUpperCase();
+ // The context matters first. The member's temperament changes how advice lands.
+ const practical=[3,5,6,7,9,11,16,17,18,20,21,22,23,24];
+ const emotional=[0,2,4,8,10,12,13,14,25,26,27,28,29];
+ let score=index===0?2:index===1?1:0;
+ if(topic>=15&&topic<=19)score=index===0?2:index===1?1:-1;
+ else if(index===1&&practical.includes(topic)&&mb.includes('T'))score=2;
+ else if(index===1&&emotional.includes(topic)&&mb.includes('F'))score=2;
+ else if(index===0&&practical.includes(topic)&&mb.includes('T'))score=1;
+ else if(index===2&&mb.includes('P')&&[2,4,8,14,26,27].includes(topic))score=1;
+ else if(index===2&&mb.includes('J')&&[5,6,7,9,20,21,22].includes(topic))score=-1;
+ return score>=2?'good':score<0?'bad':'neutral';
+}
+function mediumReply(m,topic,index,grade){
+ const base=mediumAnswers[topic]?.[index]||'話を聞いてもらえて、少し考えが整理できました';
+ const mb=String(m.mbti||'').toUpperCase();
+ const intros=mb.startsWith('I')?['ありがとうございます。','話を聞いてくださってありがとうございます。','相談できてよかったです。']:['ありがとうございます！','話せてよかったです！','相談に乗ってくれて嬉しいです！'];
+ const endings=grade==='bad'?['ただ、まだ少し不安が残っています。','正直、まだ気持ちの整理がついていません。','もう少し考える時間が欲しいです。']:grade==='good'?['少し前向きになれました。','やってみようと思います。','気持ちが軽くなりました。']:['少しずつ考えてみます。','また困ったら相談させてください。','自分でも整理してみます。'];
+ const pick=Math.floor(Math.random()*3);
+ const suffix=mb.includes('T')?endings[(pick+1)%3]:endings[pick];
+ return personality(m,`${intros[pick]}${base}。${suffix}`);
+}
+function mediumChange(grade){if(grade==='good')return 5+Math.floor(Math.random()*11);if(grade==='bad')return -(5+Math.floor(Math.random()*6));return Math.floor(Math.random()*9)-3}
+function activeEligible(topic,g,m){if(topic>=5&&topic<=9){return housed(m)&&(g.members||[]).filter(housed).length>=2;}if(topic>=15&&topic<=19){return housed(m);}if(topic>=10&&topic<=14){return (state.idolRoadIncidents||[]).some(x=>String(x.groupId)===String(g.id)&&!x.closed&&x.decision!=='契約解除')}return true}
 function greeting(){for(const {id,m} of members()){const th=getThread(id);if(th.messages.length)continue;const texts=['はじめまして！これからよろしくお願いします！','今日からお世話になります。精一杯頑張ります！','よろしくお願いします！一生懸命頑張りますね。','これから色々学びたいです。よろしくお願いします！','今日からよろしくお願いします。少し緊張しています！'];add(id,personality(m,texts[store().serial%texts.length]),{kind:'greeting'})}}
 function syncIncidents(){
  window.IDOL_ROAD_INCIDENTS?.ensureResumeNotices?.();
@@ -4229,7 +4287,7 @@ function tick(){
     else if(lightReady&&Math.random()<0.16)level='light';
     if(!level)continue;
     const topics=level==='medium'?mediumTopics:lightTopics;
-    const pool=topics.map((topic,i)=>({topic,i})).filter(v=>level!=='medium'||activeEligible(v.i,x.g));
+    const pool=topics.map((topic,i)=>({topic,i})).filter(v=>level!=='medium'||activeEligible(v.i,x.g,m));
     if(!pool.length)continue;
     const chosen=pool[Math.floor(Math.random()*pool.length)];
     add(x.id,personality(m,chosen.topic[0]),{kind:'consult',level,choices:makeChoices(chosen.topic),date:cursor,topicId:chosen.i});
@@ -4291,10 +4349,10 @@ function respond(x,msg,index){
  add(x.id,ch.label,{mine:true,answerTo:msg.id});
  const outcome=ch.outcome||'unresolved';
  if(msg.level==='medium'){
-  const value=outcome==='resolved'?7:outcome==='worsened'?-12:-4;
-  adjust(x.m,'mental',value);adjust(x.m,'motivationLevel',value);
-  if(msg.relatedId){const other=members().find(y=>y.id===String(msg.relatedId)&&y.id!==x.id);if(other){const delta=outcome==='resolved'?4:outcome==='worsened'?-7:-2;adjust(other.m,'mental',delta);adjust(other.m,'motivationLevel',delta)}}
-  if(outcome==='unresolved'&&!(msg.topicId>=15&&msg.topicId<=19)){
+  const grade=mediumAssessment(x.m,Number(msg.topicId),index);
+  adjust(x.m,'mental',mediumChange(grade));adjust(x.m,'motivationLevel',mediumChange(grade));
+  if(msg.relatedId){const other=members().find(y=>y.id===String(msg.relatedId)&&y.id!==x.id);if(other){const delta=grade==='good'?4:grade==='bad'?-7:-2;adjust(other.m,'mental',delta);adjust(other.m,'motivationLevel',delta)}}
+  if(false&&outcome==='unresolved'&&!(msg.topicId>=15&&msg.topicId<=19)){
    const d=new Date(dateKey()+'T12:00:00');d.setDate(d.getDate()+3+Math.floor(Math.random()*5));
    msg.followupOn=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
@@ -4303,7 +4361,7 @@ function respond(x,msg,index){
    else if(index===1){const d=new Date(dateKey()+'T12:00:00');d.setMonth(d.getMonth()+1);msg.followupOn=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;msg.followupType='defer'}
   }
  }else if(msg.level==='light'&&outcome==='resolved')adjust(x.m,'motivationLevel',7);
- add(x.id,personality(x.m,outcome==='resolved'?'ありがとうございます！相談してよかったです。':'ありがとうございます。もう少し考えてみます。'),{kind:'followup'});
+ add(x.id,msg.level==='medium'?mediumReply(x.m,Number(msg.topicId),index,mediumAssessment(x.m,Number(msg.topicId),index)):personality(x.m,outcome==='resolved'?'ありがとうございます！相談してよかったです。':'ありがとうございます。もう少し考えてみます。'),{kind:'followup'});
  save();showChat(x.id);
 }
 const previousShow=showDrawer;showDrawer=function(name){if(name==='LINE'){openPanel='LINE';document.getElementById('drawer').hidden=false;document.getElementById('drawerTitle').textContent='LINE';tick();shown=50;showList();return}return previousShow(name)};
