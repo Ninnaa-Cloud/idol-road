@@ -1615,7 +1615,7 @@ const EXT_EVENT_BASE=['IDOL LIVE JAPAN','アイドル甲子園','GIRLS BOX','MAR
 /* 既存イベント名をモチーフにした100種のゲーム内架空公演タイトル。 */
 const EXT_EVENT_NAMES=Array.from({length:100},(_,i)=>EXT_EVENT_BASE[i%EXT_EVENT_BASE.length]+' '+['SPECIAL','DAY','NIGHT','EXTRA','FEST'][Math.floor(i/EXT_EVENT_BASE.length)]+' #'+(i+1));
 const EXT_IDOLS=['Appare!','FES☆TIVE','まねきケチャ','ナナランド','真っ白なキャンバス','高嶺のなでしこ','Jams Collection','iLiFE!','のんふぃく！','夜光性アミューズ','NEO JAPONISM','Devil ANTHEM.','かすみ草とステラ','#ババババンビ','#よーよーよー','Peel the Apple','MyDearDarlin’','可憐なアイボリー','CANDY TUNE','FRUITS ZIPPER','SWEET STEADY','CUTIE STREET','Task have Fun','二丁目の魁カミングアウト','Ringwanderung','INUWASI','yosugala','Kolokol','クマリデパート','虹のコンキスタドール','でんぱ組.inc','きゅるりんってしてみて','AVAM','Palette Parade','ドラマチックレコード','タイトル未定','fishbowl','situasion','きのホ。','RAY','美味しい曖昧','アンスリューム','ワールズエンド。','手羽先センセーション','ワンダーウィード 天','花いろは','SAI²Rium','ネコプラpixx.','シュレーディンガーの犬','ベンジャス！'];
-const EXT_RANGES=[[1,2],[2,3],[3,5],[4,6],[6,9],[8,12],[12,18],[18,25]];
+const EXT_RANGES=[[3,5],[5,8],[8,12],[10,15],[12,18],[15,22],[18,26],[20,30]];
 const extPick=a=>a[Math.floor(Math.random()*a.length)];
 const extRand=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const extDateAdd=(date,n)=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+n);return dateKey(d)};
@@ -3125,7 +3125,7 @@ function generate(){
  state.varietyOfferCheckedMonth=month;
  state.varietyOfferChecked=key;
  const isSpecial=(state.month===4||state.month===10);
- const monthlyOdds={net:.25,late:.12,prime:.05,special:.03};
+ const monthlyOdds={net:.35,late:.18,prime:.05,special:.03};
  for(const tier of ['net','late','prime',...(isSpecial?['special']:[])]){
   const cap=RULES[tier].cap;
   const count=records().filter(r=>r.tier===tier&&r.received?.slice(0,7)===month).length;
@@ -3157,7 +3157,7 @@ window.__idolRoadVarietyTV={catalog:CATALOG,rules:RULES,records,invite,answer,tr
 /* IDOL ROAD drama & film feature — additive integration */
 (()=>{
 'use strict';
-const TYPES={short:{label:'ショートドラマ',min:[2500,5000],odds:[.12,.024],fee:[[30000,100000],[100000,250000]],pop:[20,60],fame:[30,100],days:4,duration:[2,2]},late:{label:'地上波ドラマ（深夜帯）',min:[4000,6500],odds:[.06,.012],fee:[[150000,500000],[500000,1200000]],pop:[60,150],fame:[100,300],weeks:9,perWeek:2,duration:[2,4]},prime:{label:'地上波ドラマ（ゴールデン）',min:[6000,7600],odds:[.02,.004],fee:[[500000,1500000],[1500000,4000000]],pop:[150,350],fame:[300,800],weeks:17,perWeek:2,duration:[3,7]},film:{label:'映画',min:[6200,7800],odds:[.015,.003],fee:[[800000,2500000],[3000000,8000000]],pop:[200,500],fame:[400,1200],weeks:26,perWeek:4,duration:[1,12]}};
+const TYPES={short:{label:'ショートドラマ',min:[2500,5000],odds:[.18,.036],fee:[[30000,100000],[100000,250000]],pop:[20,60],fame:[30,100],days:4,duration:[2,2]},late:{label:'地上波ドラマ（深夜帯）',min:[4000,6500],odds:[.06,.012],fee:[[150000,500000],[500000,1200000]],pop:[60,150],fame:[100,300],weeks:9,perWeek:2,duration:[2,4]},prime:{label:'地上波ドラマ（ゴールデン）',min:[6000,7600],odds:[.02,.004],fee:[[500000,1500000],[1500000,4000000]],pop:[150,350],fame:[300,800],weeks:17,perWeek:2,duration:[3,7]},film:{label:'映画',min:[6200,7800],odds:[.015,.003],fee:[[800000,2500000],[3000000,8000000]],pop:[200,500],fame:[400,1200],weeks:26,perWeek:4,duration:[1,12]}};
 const STATIONS=['NHK','日本テレビ','TBS','フジテレビ','テレビ朝日','テレビ東京','読売テレビ','関西テレビ','毎日放送','東海テレビ'];
 const STUDIOS=['蒼空映像制作','青葉フィルム','星影映画製作所','白波ピクチャーズ','灯映プロダクション','月舟フィルムズ','東雲シネマ制作','春霞映像','風音映画社','黎明スクリーン'];
 const A=['雨上がりの','遠い夏の','透明な','月明かりの','最後の','ひだまりの','青い','忘れられた','さよならの','夜明け前の','秘密の','春を待つ','雪解けの','真夜中の','君と見た','静かな','夕暮れの','白い','星降る','風の中の','まだ見ぬ','あの日の','小さな','名前のない','光の向こうの','揺れる','夏色の','嘘つきの','空白の','永遠の','夢見る','終わらない','水辺の','遠回りの','花咲く','交差する','約束の','雨音の','記憶の','淡い','迷い込んだ','まばゆい','沈黙の','優しい','ひとりぼっちの','波打ち際の','街角の','虹色の','二度目の','眠れない'];
@@ -4362,12 +4362,68 @@ const majorTemplates={
  conflict:['メンバーとの関係で少し悩んでいます。お話しできませんか？','最近、メンバーと意見が合わなくて気まずいです…。','グループ内でうまく話せないことがあって、相談したいです。','あるメンバーとすれ違いが続いています。','メンバーとの関係について、少し相談したいことがあります。'],
  graduation:['将来のことを考えて、卒業について相談したいです。','最近、今後の活動について考えることが増えました。卒業の相談をさせてください。','突然すみません。グループを卒業することについてお話ししたいです。','自分のこれからを考えて、卒業を希望しています。','アイドルとしての今後について、卒業も含めて相談したいです。'],
  leave:['最近、心身の負担が大きくて…。しばらく活動を休ませていただけませんか？','少し気持ちを整える時間が必要だと感じています。活動休止を相談したいです。','体調と気持ちの面で、少し休養を取れないか相談したいです。','今の状態では活動を続けるのがつらくて…。休止について相談させてください。','しばらくお休みをいただきたいです。相談できますか？']};
+// Graduation consultations use birthday-based age and MBTI-specific wording.
+function majorAge(m,date){
+ const birth=String(m.birthDate||'');
+ if(/^\d{4}-\d{2}-\d{2}$/.test(birth)){
+  const year=Number(date.slice(0,4)),month=Number(date.slice(5,7)),day=Number(date.slice(8,10));
+  return Math.max(0,year-Number(birth.slice(0,4))-((month<Number(birth.slice(5,7))||(month===Number(birth.slice(5,7))&&day<Number(birth.slice(8,10))))?1:0));
+ }
+ return Number(m.age)||0;
+}
+const graduationTexts={
+ NT:['今後の活動と、自分が次に挑戦したいことを整理して考えました。グループを卒業したいと思っています。お話しできますか？','突然ですが、将来の方向性を考えた結果、卒業についてご相談したいです。'],
+ NF:['ずっと考えていたことなんですけど、これからの自分のことも大切にしたくて…。卒業についてお話しさせてください。','グループのみんなが大切だからこそ悩んだんですが、自分の次の一歩について相談したいです。'],
+ ST:['活動を続けることと今後の生活を考え、卒業したいという結論になりました。一度お時間をいただけますか？','急なご連絡ですみません。今後の予定を考えて、卒業について正式に相談したいです。'],
+ SF:['今までの活動には本当に感謝しています。でも、これからのことを考えて卒業を希望しています。お話しできますか？','ずっとお世話になっているので言いづらいのですが、卒業について相談させてください。']
+};
+// A substantial lifetime record of completed solo work can very rarely prompt a career-oriented graduation consultation.
+// Count distinct productions, not drama episodes or scheduled/accepted bookings.
+function graduationCareerRecord(x,date){
+ const id=String(x.id);
+ // Only count completed individual engagements across the member's entire career.
+ // Each saved program/production counts once; episode-level schedule rows are excluded.
+ const variety=(state.varietyTV||[]).filter(v=>String(v.memberId)===id&&v.mode==='solo'&&['recorded','broadcasted'].includes(v.status)).length;
+ const drama=(state.dramaFilmWorks||[]).filter(v=>String(v.memberId)===id&&v.type!=='film'&&['completed','released','broadcasted'].includes(v.status)).length;
+ const film=(state.dramaFilmWorks||[]).filter(v=>String(v.memberId)===id&&v.type==='film'&&['completed','released','broadcasted'].includes(v.status)).length;
+ // Career graduation remains very rare even after these substantial milestones.
+ if(film>=10)return {reason:'actress_film',count:film,probability:.0010};
+ if(drama>=20)return {reason:'actress_drama',count:drama,probability:.0009};
+ if(variety>=30)return {reason:'talent',count:variety,probability:.0009};
+ return null;
+}
+function graduationCareerText(m,reason){
+ const mb=String(m.mbti||'').toUpperCase(),t=mb.includes('T'),extrovert=mb.startsWith('E');
+ const topics={
+  talent:t?'個人でバラエティのお仕事をする機会が増えて、自分の進路について考えました。今後は一人のタレントとして活動することに専念したく、グループからの卒業を相談したいです。':'一人でバラエティに出させてもらううちに、タレントとしてもっといろんなことに挑戦したい気持ちが強くなって…。グループのことも大好きなんですけど、卒業について相談したいです。',
+  actress_drama:t?'ドラマの出演経験を重ねるなかで、今後は女優業に本格的に専念したいと考えるようになりました。卒業についてお話ししたいです。':'ドラマでお芝居をするたびに、もっと本気で女優を目指したいって気持ちが強くなって…。卒業について一度お話しさせてください。',
+  actress_film:t?'映画の現場で経験を積み、これからは映画を中心に女優として活動していきたいと考えています。卒業をご相談できますか？':'映画のお仕事を重ねて、もっと映画の世界でお芝居に挑戦していきたいと思うようになりました。グループを卒業して女優を目指すことについて相談したいです。'
+ };
+ return (extrovert?'お疲れさまです！\n':'お疲れさまです。突然のLINEですみません。\n')+(topics[reason]||graduationText(m));
+}
+function graduationText(m,variant=0){
+ const mb=String(m.mbti||'').toUpperCase();
+ const key=(mb.includes('N')?'N':'S')+(mb.includes('T')?'T':'F');
+ let t=graduationTexts[key][variant%graduationTexts[key].length];
+ if(mb.startsWith('E'))t='お疲れさまです！\n'+t;
+ else if(mb.startsWith('I'))t='お疲れさまです。急にLINEしてすみません。\n'+t;
+ return t;
+}
+function graduationReply(m,kind,reason){
+ const mb=String(m.mbti||'').toUpperCase(),thinking=mb.includes('T'),intro=mb.startsWith('I');
+ if(['talent','actress_drama','actress_film'].includes(reason)){const goal=reason==='talent'?'タレントとしての活動':reason==='actress_film'?'映画を中心にした女優の道':'女優の道';if(kind==='approved')return thinking?`認めていただきありがとうございます。卒業までは責任を持って活動し、その後は${goal}に専念します。`:`ありがとうございます…。卒業の日までしっかり頑張って、そのあと${goal}に挑戦したいです。`;if(kind==='reconsider')return thinking?'お話を聞いて、今後の活動をもう一度整理して考えてみます。':'そう言ってもらえてうれしいです…。もう少しグループで頑張ることも考えてみます。';if(kind==='still')return thinking?`改めて考えましたが、やはり${goal}に進みたい気持ちは変わっていません。`:`考え直したんですけど、やっぱり${goal}への気持ちが強くて…。`;if(kind==='declined')return thinking?'事務所の方針は理解しました。もう少し時間をかけて進路を考えます。':'わかりました…。すぐには決められないけど、もう少し考えてみます。';}
+ if(kind==='approved')return thinking?'気持ちを尊重していただき、ありがとうございます。卒業の日まで責任を持って活動します。':'ありがとうございます…。受け止めていただけてうれしいです。卒業まで精一杯頑張ります。';
+ if(kind==='reconsider')return thinking?'お話を聞いていただきありがとうございます。もう一度、今後の活動について考えてみます。':'ありがとうございます。ちゃんと向き合っていただけてうれしいです。もう少し考えてみます。';
+ if(kind==='still')return thinking?'考え直してみましたが、現時点では卒業を希望する気持ちは変わっていません。':'引き止めていただいてありがとうございます。でも、まだ卒業したい気持ちがあります…。';
+ if(kind==='declined')return thinking?'事務所のお考えは理解しました。少し時間を置いて、改めて自分の進路を整理します。':'わかりました…。すぐには気持ちを整理できませんが、少し時間をかけて考えます。';
+ return intro?'少しずつ気持ちを整理してみます。ありがとうございます。':'もう少しここで頑張ってみようと思います！ありがとうございます。';
+}
 const majorTone=(m,t)=>{const mb=String(m.mbti||'');if(mb.startsWith('E'))return t.replace('相談してもいいですか？','相談させてください！');if(mb.includes('T'))return t.replace('…。','。');return t};
 function majorMessage(x,type,date,extra={}){
  const ms=majorState(),k=x.id+':'+type,variants=majorTemplates[type];let i=randomBetween(0,variants.length-1);
  if(i===ms.lastVariant[k])i=(i+1)%variants.length;ms.lastVariant[k]=i;
- let text=majorTone(x.m,variants[i]);if(ms.last[k]&&type==='motivation')text='以前も相談したんですけど、また自信がなくなってきて…。\n'+text;
- const choices=type==='motivation'?[{label:'いつも頑張ってくれてるの、ちゃんと伝わってるよ。'},{label:'無理しすぎなくていいから、自分のペースで頑張ろう。'},{label:'大変なのはわかるけど、もう少し頑張ってほしい。'}]:type==='pressure'?[{label:'いつもどおりで大丈夫だよ'},{label:'期待してるよ、頑張って！'},{label:'無理しすぎないでね'}]:type==='conflict'?[{label:'二人で話し合ってみよう'},{label:'事務所が間に入るね'},{label:'少し様子を見よう'}]:type==='graduation'?[{label:'卒業を承認する'},{label:'もう一度考えてほしい'},{label:'7日間保留にする'}]:[{label:'希望どおり休止を認める'},{label:'期間を変更して認める'},{label:'今回は認めない'}];
+ let text=type==='graduation'&&['talent','actress_drama','actress_film'].includes(extra.reason)?graduationCareerText(x.m,extra.reason):type==='graduation'?graduationText(x.m,i):majorTone(x.m,variants[i]);if(ms.last[k]&&type==='motivation')text='以前も相談したんですけど、また自信がなくなってきて…。\n'+text;
+ const choices=type==='motivation'?[{label:'いつも頑張ってくれてるの、ちゃんと伝わってるよ。'},{label:'無理しすぎなくていいから、自分のペースで頑張ろう。'},{label:'大変なのはわかるけど、もう少し頑張ってほしい。'}]:type==='pressure'?[{label:'いつもどおりで大丈夫だよ'},{label:'期待してるよ、頑張って！'},{label:'無理しすぎないでね'}]:type==='conflict'?[{label:'二人で話し合ってみよう'},{label:'事務所が間に入るね'},{label:'少し様子を見よう'}]:type==='graduation'?[{label:'卒業を認める'},{label:'卒業を認めない'}]:[{label:'希望どおり休止を認める'},{label:'期間を変更して認める'},{label:'今回は認めない'}];
  const msg=add(x.id,text,{kind:'consult',level:'major',choices,date});if(msg){msg.majorType=type;msg.majorExtra=extra;ms.last[k]=date;ms.daily[x.id]=date;}return msg;
 }
 // v44: major-case lifecycle, distinct from chat history.
@@ -4383,12 +4439,13 @@ function majorFollow(x,type,text,choices,date,extra={}){
  if(msg){msg.majorType=type;msg.majorExtra=extra;majorState().daily[x.id]=date;}return msg;
 }
 function graduationReason(x){const m=x.m,caseState=majorCase(x);
+ if(caseState.careerTriggerReason){const r=caseState.careerTriggerReason;delete caseState.careerTriggerReason;return r;}
  if(caseState.conflict?.unresolvedDays>=30)return 'conflict';
  if(Number(m.mental??70)<=25||Number(m.fatigue??0)>=85)return 'health';
  if(Number(m.popularity??m.popularityLevel??0)>=80)return 'solo';
  return 'future';
 }
-function graduationChance(x,reason,second=false){const m=x.m,c=majorCase(x),base={future:.60,solo:.30,health:.20,conflict:.30}[reason]??.60;
+function graduationChance(x,reason,second=false){const m=x.m,c=majorCase(x),base={future:.60,solo:.30,health:.20,conflict:.30,talent:.25,actress_drama:.25,actress_film:.25}[reason]??.60;
  let chance=base+(Number(m.motivationLevel??50)-50)/300+(Number(m.mental??50)-50)/400;
  if(reason==='conflict')chance+=c.conflict?.resolved?.2:-.15;
  if(second)chance-=.20;
@@ -4401,7 +4458,7 @@ function majorCandidates(x,date){
  const ms=majorState(),m=x.m,c=majorCase(x),mental=Number(m.mental??75),mot=Number(m.motivationLevel??75),fatigue=Number(m.fatigue??0);
  const resting=!!m.irMajorLeave,ongoing=c.graduation&&['initial','hold','retry','failed','approved'].includes(c.graduation.phase);
  const out=[],lastMajor=getThread(x.id).messages.filter(v=>v.majorType).at(-1),gap=lastMajor?days(date,lastMajor.date):999;
- if(!ongoing&&(!c.graduation?.cooldownUntil||date>=c.graduation.cooldownUntil)&&(mot<=25||mental<=20||ms.lowDays[x.id]>=30||c.conflict?.unresolvedDays>=30)&&Math.random()<(.015+(ms.lowDays[x.id]>=60?.025:ms.lowDays[x.id]>=30?.01:0)))out.push('graduation');
+ if(!ongoing&&(!c.graduation?.cooldownUntil||date>=c.graduation.cooldownUntil)){const older=majorAge(m,date)>=24;const distressed=(mot<=25||mental<=20||ms.lowDays[x.id]>=30||c.conflict?.unresolvedDays>=30);const probability=(distressed?.015+(ms.lowDays[x.id]>=60?.025:ms.lowDays[x.id]>=30?.01:0):0)+(older?.0008:0);const career=graduationCareerRecord(x,date);if(probability>0&&Math.random()<probability)out.push('graduation');else if(career&&Math.random()<career.probability){c.careerTriggerReason=career.reason;out.push('graduation');}}
  if(!resting&&!ongoing&&(mental<=25||fatigue>=85)&&Math.random()<.025)out.push('leave');
  if(!resting&&gap>=7&&!ongoing){
   if(mot<=30&&(!ms.last[x.id+':motivation']||days(date,ms.last[x.id+':motivation'])>=30)&&Math.random()<.10)out.push('motivation');
@@ -4427,7 +4484,7 @@ function majorTick(date){const ms=majorState();for(const x of members()){
  }
  if(c.graduation?.nextDate&&date>=c.graduation.nextDate&&!majorPending(x,'graduation')){
   const gr=c.graduation;gr.nextDate=null;gr.phase=gr.attempts?'retry':'hold';
-  majorFollow(x,'graduation',gr.attempts?'前にお話しした卒業の件ですが、まだ気持ちが変わりません。':'先日保留にしていただいた卒業の件で、改めてお話ししたいです。',gr.attempts?[{label:'卒業を承認する'},{label:'もう一度引き止める'}]:[{label:'卒業を承認する'},{label:'引き止める'}],date,{reason:gr.reason,followup:true});
+  majorFollow(x,'graduation',['talent','actress_drama','actress_film'].includes(gr.reason)?graduationCareerText(m,gr.reason):gr.attempts?graduationText(m,gr.attempts):graduationText(m,1),[{label:'卒業を認める'},{label:'卒業を認めない'}],date,{reason:gr.reason,followup:true});
  }
  if(m.irMajorLeave){const l=m.irMajorLeave;
   if(date>=l.end&&!c.leave?.pending){const recovered=l.type==='academic'?!!(m.irSchoolResolved||m.schoolResolved):Number(m.fatigue??100)<=30&&Number(m.mental??0)>=70;
@@ -4440,7 +4497,7 @@ function majorTick(date){const ms=majorState();for(const x of members()){
  if(ms.daily[x.id]===date||!candidates.length)continue;
  if(candidates[0]==='graduation')graduationStart(x,date);else majorMessage(x,candidates[0],date,candidates[0]==='leave'?{kind:Number(m.fatigue??0)>=85?'illness':'mental',requestedDays:30}:{});
  }}
-window.IR_AUTO_MAJOR=()=>{let done=0;for(const x of members()){const th=getThread(x.id);for(const message of th.messages||[]){if(message.majorType&&!message.answered&&message.choices?.length){majorRespond(x,message,0);message.answered=true;done++}}}return done};
+window.IR_AUTO_MAJOR=()=>{let done=0;for(const x of members()){const th=getThread(x.id);for(const message of th.messages||[]){if(message.majorType&&message.majorType!=='graduation'&&!message.answered&&message.choices?.length){majorRespond(x,message,0);message.answered=true;done++}}}return done};
 function majorChoices(type){return type==='conflict'?[{label:'二人で話し合ってみよう'},{label:'事務所が間に入るね'},{label:'少し様子を見よう'}]:type==='leave'?[{label:'希望どおり休止を認める'},{label:'期間を変更して認める'},{label:'今回は認めない'}]:[];}
 function majorRespond(x,msg,index){const type=msg.majorType,m=x.m,c=majorCase(x),date=dateKey();
  const effects=(a,b,d,e)=>{adjust(m,'motivationLevel',randomBetween(a,b));adjust(m,'mental',randomBetween(d,e))};
@@ -4450,16 +4507,15 @@ function majorRespond(x,msg,index){const type=msg.majorType,m=x.m,c=majorCase(x)
  if(type==='conflict'){const success=resolveConflict(x,index,date);reply=success?'話し合えて少し安心しました。ありがとうございます。':'まだ少し難しそうです。また相談させてください。';}
  if(type==='graduation'){
   const gr=c.graduation??(c.graduation={reason:msg.majorExtra?.reason||'future',attempts:0});
-  const follow=!!msg.majorExtra?.followup,approve=index===0,hold=!follow&&index===2;
-  if(approve){gr.phase='approved';m.irGraduationApproved=true;window.IDOL_ROAD_GRADUATION?.approve(x.id,gr.reason,date);reply='お話を聞いていただきありがとうございます。卒業までよろしくお願いします。';}
-  else if(hold){gr.phase='hold';gr.nextDate=plusDays(date,7);reply='ありがとうございます。少し考える時間をいただきます。';}
+  const approve=index===0;
+  if(approve){gr.phase='approved';m.irGraduationApproved=true;window.IDOL_ROAD_GRADUATION?.approve(x.id,gr.reason,date);reply=graduationReply(m,'approved',gr.reason);}
   else{const second=gr.attempts>0;gr.attempts++;
    if(Math.random()<graduationChance(x,gr.reason,second)){
     gr.phase='withdrawn';gr.previousReason=gr.reason;gr.cooldownUntil=plusDays(date,90);gr.nextDate=null;
-    if(gr.reason==='future')effects(15,25,10,20);else if(gr.reason==='conflict'&&c.conflict?.resolved)effects(10,15,15,20);else if(gr.reason==='conflict')effects(3,5,5,10);else if(gr.reason==='solo')effects(5,10,5,10);else effects(5,10,10,20);
-    reply='もう少し活動を続けてみようと思います。ありがとうございます。';
-   }else if(second){gr.phase='failed';gr.nextDate=null;reply='何度も考えましたが、卒業したい気持ちは変わりません。';majorFollow(x,'graduation','卒業について、最終的なお返事をお願いします。',[{label:'卒業を承認する'}],date,{reason:gr.reason,followup:true});}
-   else{gr.phase='retry';gr.nextDate=plusDays(date,7);reply='ありがとうございます。でも、まだ卒業したい気持ちがあります。';}
+    if(gr.reason==='future')effects(15,25,10,20);else if(gr.reason==='conflict'&&c.conflict?.resolved)effects(10,15,15,20);else if(gr.reason==='conflict')effects(3,5,5,10);else if(gr.reason==='solo'||['talent','actress_drama','actress_film'].includes(gr.reason))effects(5,10,5,10);else effects(5,10,10,20);
+    reply=graduationReply(m,'reconsider',gr.reason);
+   }else if(second){gr.phase='declined';gr.nextDate=null;gr.cooldownUntil=plusDays(date,90);effects(-10,-5,-10,-5);reply=graduationReply(m,'declined',gr.reason);}
+   else{gr.phase='retry';gr.nextDate=plusDays(date,7);reply=graduationReply(m,'still',gr.reason);}
   }
  }
  if(type==='leave'){
