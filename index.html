@@ -4405,6 +4405,21 @@ window.IDOL_ROAD_MAJOR_CONSULTATION={conflict(memberId,otherId){const x=members(
  if(previous?.active)return false;c.conflict={otherId:String(otherId),active:true,resolved:false,repeatCount:(previous?.repeatCount||0)+1,unresolvedDays:0,nextDate:null,groupPenaltyApplied:false};
  if(!majorPending(x,'conflict'))majorMessage(x,'conflict',dateKey(),{otherId:String(otherId)});save();return true;}};
 
+// Keep the latest 30 game-days of LINE messages; retain consultation and incident state separately.
+function cleanupOldLineMessages(st,now){
+ let changed=false;
+ for(const th of Object.values(st.threads||{})){
+  if(!Array.isArray(th.messages))continue;
+  const before=th.messages.length;
+  th.messages=th.messages.filter(m=>!m.date||!/^\d{4}-\d{2}-\d{2}$/.test(m.date)||days(now,m.date)<30);
+  if(th.messages.length!==before){
+   changed=true;
+   // Deleted messages cannot remain unread.
+   th.unread=Math.min(Number(th.unread)||0,th.messages.filter(m=>!m.mine).length);
+  }
+ }
+ return changed;
+}
 function tick(){
  const st=store(),now=dateKey(),valid=new Set(members().map(x=>x.id));
  for(const id of Object.keys(st.threads))if(!valid.has(id))delete st.threads[id];
@@ -4419,7 +4434,7 @@ function tick(){
    msg.choices=inc.truth==='unconfirmed_false'?[{label:'本人を信じて否定声明を出す',incidentDecision:'事実ではない'},{label:'追加の事実確認を行う',incidentDecision:'追加確認'},{label:'事実が不明なまま処分を決める',incidentDecision:'不明処分'}]:[{label:'事実を認めて処分を検討する',incidentDecision:'事実を認める'}];
   }
  }
- if(st.lastDay===now){badge();return}
+ if(st.lastDay===now){if(cleanupOldLineMessages(st,now))save();badge();return}
  // Process each skipped game day separately, including missed-response deadlines.
  let cursor=st.lastDay&&days(now,st.lastDay)>0?st.lastDay:now;
  const iterations=Math.max(1,days(now,cursor));
@@ -4462,6 +4477,7 @@ function tick(){
 
 
  }
+ cleanupOldLineMessages(st,now);
  st.lastDay=now;save();badge();
 }
 function badge(){const rail=document.querySelector('[data-drawer="LINE"]');if(!rail)return;let el=rail.querySelector('.ir-badge');if(!el){el=document.createElement('strong');el.className='ir-badge';el.style.cssText='background:#e84d5b;color:white;border-radius:12px;padding:1px 5px;font-size:11px;margin-left:3px';rail.append(el)}const n=Object.values(store().threads).reduce((a,t)=>a+(t.unread||0),0);el.textContent=n>99?'99+':String(n);el.hidden=!n;rail.style.position='relative';el.style.position='absolute';el.style.top='2px';el.style.right='2px';el.style.marginLeft='0';el.setAttribute('aria-label',`LINE未読${n}件`)}
