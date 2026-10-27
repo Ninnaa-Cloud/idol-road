@@ -1910,7 +1910,34 @@ function spendStage(x,i,stage,r){const period=interval(x,i,stage),ms=irLiveStage
 function stageWarning(x,i,stage,r){const period=interval(x,i,stage);if(!period)return '移動時間を取得できません。';if(period[0]<0||period[1]>24)return '活動時間が当日の0:00〜24:00を超えています。';const eligibleIds=new Set(irLiveStageEligible(x,i,stage,r).map(m=>String(m.id))),previous=r?.participatingMemberIds,all=roster(x,i).filter(m=>!previous||previous.includes(String(m.id)));const missing=all.filter(m=>!eligibleIds.has(String(m.id)));if(!eligibleIds.size)return 'この段階に参加できるメンバーがいません。';return missing.length?'次のメンバーは年齢制限または時間不足で不参加になります：'+missing.map(m=>m.stageName||m.name).join('、')+'。残りのメンバーで進めますか？':'';}
 function membersOf(x,i=0,r){return r?.participatingMemberIds?stageMembers(x,i,r):roster(x,i);}
 function cheki(x,own,ids){const allowed=new Set((ids||[]).map(String));const rows=(groupOf(x)?.members||[]).filter(m=>allowed.has(String(m.id))).map(m=>{const grade=popularityDetails(m).grade,count=Math.round(Math.max(0,own)*(RATES[grade]||0));return {memberId:m.id,name:(typeof m.stageName==='string'&&m.stageName.trim())?m.stageName.trim():(m.name||'メンバー'),count,revenue:count*1000};});return {rows,total:rows.reduce((a,r)=>a+r.revenue,0)};}
-function hostedActual(x,i){const f=x.attendanceForecasts?.[i]||{},cap=Number(stopOf(x,i).capacity||x.capacity)||0;const original=f.actual!==undefined&&f.actual!==null&&Number.isFinite(Number(f.actual))?Math.max(0,Math.min(cap,Math.round(Number(f.actual)))):liveDrawAttendance(forecastOf(x,i),cap);return window.IDOL_ROAD_SCANDAL_EFFECTS?window.IDOL_ROAD_SCANDAL_EFFECTS.attendance(x.groupId,dayOf(x,i),original):original;}
+// A completed self-hosted ticket sale is the authority for admissions and ticket revenue.
+// This applies only to self-hosted solo lives; external and hosted joint settlements keep their own rules.
+function irConfirmedSoloTickets(x,i){
+ if(isExternal(x)||x.type==='joint')return null;
+ const date=dayOf(x,i),key=String(x.id)+'::'+String(date);
+ const t=state.hostedLiveTickets?.[key];
+ if(!t||t.status!=='finished'||!t.credited||t.refunded)return null;
+ const cap=Math.max(0,Number(stopOf(x,i).capacity||x.capacity)||0);
+ const sold=Number(t.sold),price=Number(t.price);
+ if(!Number.isFinite(sold)||sold<0||!Number.isFinite(price)||price<=0)return null;
+ return {sold:Math.max(0,Math.min(cap,Math.round(sold))),price,revenue:Math.max(0,Math.round(sold))*price};
+}
+// Repair legacy reports only; ticket income has already been credited at the sale date.
+// Do not recredit accounting or re-run merchandise, cheki, fan, or popularity simulations.
+function irReconcileFinishedSoloReport(x,i,r){
+ if(!r?.finished||!r.financial||r.financial.kind!=='solo')return false;
+ const sale=irConfirmedSoloTickets(x,i);
+ if(!sale)return false;
+ const oldRevenue=Number(r.financial.ticketRevenue)||0;
+ const changed=Number(r.actual)!==sale.sold||oldRevenue!==sale.revenue;
+ if(!changed)return false;
+ r.actual=sale.sold;r.ownActual=sale.sold;
+ const f=x.attendanceForecasts?.[i];if(f)f.actual=sale.sold;
+ r.financial.ticketRevenue=sale.revenue;
+ r.financial.net=(Number(r.financial.net)||0)+(sale.revenue-oldRevenue);
+ save();return true;
+}
+function hostedActual(x,i){const sold=irConfirmedSoloTickets(x,i);if(sold)return sold.sold;const f=x.attendanceForecasts?.[i]||{},cap=Number(stopOf(x,i).capacity||x.capacity)||0;const original=f.actual!==undefined&&f.actual!==null&&Number.isFinite(Number(f.actual))?Math.max(0,Math.min(cap,Math.round(Number(f.actual)))):liveDrawAttendance(forecastOf(x,i),cap);return window.IDOL_ROAD_SCANDAL_EFFECTS?window.IDOL_ROAD_SCANDAL_EFFECTS.attendance(x.groupId,dayOf(x,i),original):original;}
 function hostedSettlement(x,i,actual){
  if(x.type!=='joint')return null;
  if(x.jointTicketResult)return x.jointTicketResult;
@@ -1948,11 +1975,13 @@ function finance(x,i,actual,own){
   if(!r)throw Error('既存の主催対バン精算処理を取得できません。');
   return {kind:'hostedJoint',ticketRevenue:Number(r.ticketRevenue)||0,guestPayments:Number(r.guestPayments)||0,guestDetails:r.guestDetails||[],venueCost:Number(r.venueCost)||0,travelCost:Number(r.travelCost)||0,cancellationCosts:Number(r.cancellationCosts)||0,net:Number(r.net)||0};
  }
- const ticketRevenue=actual*Number(x.jointTicketPrice||3000),venueCost=Number(x.venueFee??x.venueCost??estimate.venueTotal)||0,travelCost=Number(x.travelCost??estimate.travelTotal)||0;
+ const confirmed=irConfirmedSoloTickets(x,i);
+ const ticketRevenue=confirmed?confirmed.revenue:actual*Number(x.jointTicketPrice||3000),venueCost=Number(x.venueFee??x.venueCost??estimate.venueTotal)||0,travelCost=Number(x.travelCost??estimate.travelTotal)||0;
  return {kind:'solo',ticketRevenue,venueCost,travelCost,net:ticketRevenue-venueCost-travelCost};
 }
 function report(x,i){
  const r=recordOf(x,i);if(!r?.finished)return;
+ irReconcileFinishedSoloReport(x,i,r);
  if(window.IDOL_ROAD_MERCH)window.IDOL_ROAD_MERCH.liveSales(x,i,r);
  if(isExternal(x)&&r.financial){
   const gross=Number(r.financial.gross)||0,travelCost=Number(r.financial.travelCost)||0;
@@ -2043,6 +2072,8 @@ function action(x,i,stage){
 window.IR_AUTO_LIVE_STAGE=(x,i,stage)=>{const before=JSON.stringify(recordOf(x,i)||null);action(x,i,stage);return before!==JSON.stringify(recordOf(x,i)||null)};
 const previous=renderLiveHost;
 renderLiveHost=function(){
+ // Reconcile older finished solo reports when the Live screen is displayed.
+ for(const l of state.hostedLives||[])if(!isExternal(l)&&l.type!=='joint')for(let i=0;i<(l.dates||[]).length;i++)irReconcileFinishedSoloReport(l,i,l.liveDayRuns?.[i]);
  previous();const root=document.getElementById('content');if(!root||!root.classList.contains('live-panel'))return;
  // External appearances are represented in BOTH hostedLives and externalInvites.
  // Keep the invitation as the single source of truth, and migrate any old run state.
