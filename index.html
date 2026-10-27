@@ -2486,6 +2486,7 @@ function bPerform(e){
  const activeDate=today();
  if(!e){alert('開催対象の生誕祭が見つかりません。画面を開き直してください。');return}
  if(String(e.date)!==String(activeDate)){alert('開催日が一致しません（予定：'+e.date+'／ゲーム内：'+activeDate+'）。');return}
+ if(e.status==='finished'){bRender();bReport(e);return}
  if(e.status!=='booked'){alert(e.cancelReason||'開催状態が「'+e.status+'」のため実行できません。');return}
  if(!e.travelPaid){alert('先に「移動する」を実行してください。');return}
  // Ticket sales may be completed late when an older save is resumed on the event date.
@@ -4817,9 +4818,9 @@ tick();
   for(const e of state.handshakeEvents||[]){if(e.date!==d||e.status!=='booked')continue;
    try{if(window.IR_AUTO_HANDSHAKE?.(e))executed++}catch(err){failed.push('握手会・写真会：'+err.message)}
   }
-  for(const e of state.birthdayEvents||[]){if(e.date!==d||e.status!=='booked')continue;
-   try{if(window.IR_AUTO_BIRTHDAY?.(e))executed++}catch(err){failed.push('生誕祭：'+err.message)}
-  }
+  // Birthday events require the player's explicit action on their scheduled date.
+  // Do not silently mark them finished during automatic day progression.
+  // Their existing manual travel/perform controls remain responsible for settlement.
   try{executed+=window.IR_AUTO_GROUP_LESSONS?.()||0}catch(err){failed.push('全体レッスン：'+err.message)}
   try{executed+=window.IR_AUTO_MAJOR?.()||0}catch(err){failed.push('重大相談：'+err.message)}
   syncFinishedLiveSchedules();window.__idolRoadXReconcileSchedule?.();
