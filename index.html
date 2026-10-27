@@ -3657,8 +3657,60 @@ function answer(id,yes){const i=data().invitations.find(x=>x.id===id);if(!i||i.s
 function deadline(){for(const i of data().invitations){if(i.status==='offered'&&key()>i.deadline){i.status='expired';i.slots.forEach(s=>s.status='expired')}}}
 const templates={INTP:['ステージを振り返ってみると、まだ改善できるところもあるけど、今日の経験はすごく貴重でした。ありがとう！','いつもと違う空気感で少し緊張したけど、ライブの時間はあっという間でした。'],ENFP:['最高に楽しかったー！！みんなの声が聞こえて本当に幸せだったよ！また会おうね！','夏の思い出がまたひとつ増えた！一緒に盛り上がってくれてありがとう！'],ISTJ:['今日のステージ、無事に終えられました。応援してくれた皆さんに感謝しています。','準備してきたことを届けられて嬉しかったです。次ももっと良いパフォーマンスを目指します。']};
 function social(i,s,g,phase){if(typeof idolXAdd!=='function')return;const hash=`#${i.festival.replace(/\s+/g,'')} #${i.groupName.replace(/\s+/g,'')}`;if(phase==='before'){const p=idolXAdd('group:'+g.id,g.name,typeof idolXHandleGroup==='function'?idolXHandleGroup(g):'@group',`明日は${i.festival}に出演します！${s.time}からのステージ、一緒に楽しみましょう！\n${hash}`);idolXAdd('agency',state.agency+' 公式','@agency','',null,p.id);for(const m of members(g))idolXAdd('member:'+m.id,m.stageName||m.name,typeof idolXHandleMember==='function'?idolXHandleMember(m,g):'@member','',null,p.id);return}for(const m of members(g)){const mb=(m.mbti||'INTP').toUpperCase(),arr=templates[mb]||['今日のフェス、本当にありがとうございました！みんなの応援が力になりました。また一緒に素敵な時間を過ごそうね！','たくさんの方と会えて幸せな一日でした！ステージから見た景色を忘れません。'];idolXAdd('member:'+m.id,m.stageName||m.name,typeof idolXHandleMember==='function'?idolXHandleMember(m,g):'@member',pick(arr)+`\n${hash}`)}for(let j=0;j<R(2,5);j++)idolXAdd('fan:festival:'+j,`ファン${j+1}`,'@fan',pick([`${i.groupName}のライブすごく良かった！`,`${i.festival}で初めて見たけど気になった！`,`今日のステージの余韻がすごい！`,`またライブを見に行きたい！`])+` ${hash}`)}
-function process(){const d=key();deadline();select();for(const i of data().invitations){const g=group(i.groupId);for(const s of i.slots){if(s.status!=='accepted')continue;if(shift(s.date,-1)===d&&!s.announced&&g){social(i,s,g,'before');s.announced=true}if(s.date>=d)continue;const existing=(state.schedule||[]).some(e=>e.festivalSlotId===s.id);if(!existing){s.status='cancelled';continue}const ms=members(g),base={'小':1000,'中':5000,'大':20000}[s.stage],ratio=Math.min(1,Math.max(.12,score(g,[i.festival,i.kind])/8000)),audience=Math.min(base,Math.round(base*ratio*(.8+Math.random()*.4))),rate=audience/base;s.attendance=audience;s.result=rate>=.9?'大成功':rate>=.7?'成功':rate>=.4?'普通':'不調';s.status='done';const growth=(i.kind==='idol'?{'小':[15,25,5,10,50,250],'中':[30,50,15,25,250,1000],'大':[60,90,30,50,1000,4000]}:{'小':[10,20,25,40,250,1000],'中':[25,40,50,80,1000,4000],'大':[50,75,100,150,4000,15000]})[s.stage],factor=s.result==='大成功'?1.2:s.result==='成功'?1:s.result==='普通'?.8:.6;const gp=Math.round(R(growth[0],growth[1])*factor),gf=Math.round(R(growth[2],growth[3])*factor),followers=Math.round(R(growth[4],growth[5])*factor);if(g){g.fameXp=(Number(g.fameXp)||0)+gf;g.festivalPopularityXp=(Number(g.festivalPopularityXp)||0)+gp;state.idolXFollowers??={};state.idolXFollowers['group:'+g.id]=(Number(state.idolXFollowers['group:'+g.id])||0)+followers;for(const m of ms){m.popularityActivityXp=(Number(m.popularityActivityXp)||0)+Math.round(gp*.5);m.fatigue=Math.min(100,(Number(m.fatigue)||0)+R(...({'小':[5,10],'中':[10,15],'大':[15,25]}[s.stage])));m.mental=Math.max(0,Math.min(100,(Number(m.mental)||50)+(s.result==='大成功'?R(5,10):s.result==='成功'?R(3,5):s.result==='普通'?R(0,2):-R(3,5))));state.idolXFollowers['member:'+m.id]=(Number(state.idolXFollowers['member:'+m.id])||0)+Math.round(followers*.15)}social(i,s,g,'after')}state.agencyFunds=(Number(state.agencyFunds)||0)+s.fee;if(window.IDOL_ACCOUNTING)window.IDOL_ACCOUNTING.record(s.fee,g.id,null,'festival',i.festival+' 出演料');notice(`${i.groupName} ${i.festival}：${s.result}／観客${audience.toLocaleString()}人`)}if(i.status==='accepted'&&i.slots.every(s=>['done','cancelled'].includes(s.status)))i.status='finished'}save()}
-function drawLive(){if(state.tab!=='活動'||state.sub!=='ライブ')return;const root=document.getElementById('content');if(!root||root.querySelector('#festival-integrated'))return;const target=root.querySelector('#liveUpcoming')||root;const section=document.createElement('div');section.id='festival-integrated';section.style.marginTop='16px';const upcoming=data().invitations.flatMap(i=>i.slots.map(s=>({i,s}))).filter(x=>x.s.status==='accepted').sort((a,b)=>a.s.date.localeCompare(b.s.date));const history=data().invitations.flatMap(i=>i.slots.map(s=>({i,s}))).filter(x=>['done','cancelled'].includes(x.s.status)).sort((a,b)=>b.s.date.localeCompare(a.s.date));const item=({i,s})=>`<div style="padding:9px;border-bottom:1px solid #394765">${esc(s.date)} ${esc(s.time)}｜${esc(i.groupName)} ${esc(i.festival)}｜${esc(s.stage)}ステージ ${s.status==='done'?`｜${esc(s.result)} ${s.attendance}人`:s.status==='cancelled'?'｜キャンセル':''}｜出演料 ${s.fee.toLocaleString()}円</div>`;section.innerHTML=`${upcoming.map(item).join('')}${history.length?`<details style="margin-top:8px"><summary>フェス出演履歴</summary>${history.map(item).join('')}</details>`:''}`;target.append(section)}
+function completeFestival(i,s){
+ if(!i||!s||s.status!=='accepted'||s.date!==key()||s._executing)return;
+ if(!s.travelled){alert('先に会場へ移動してください。');return;}
+ const existing=(state.schedule||[]).some(e=>e.festivalSlotId===s.id);
+ if(!existing){alert('フェスの出演予定が見つかりません。');return;}
+ const g=group(i.groupId);if(!g){alert('出演するグループが見つかりません。');return;}
+ s._executing=true;
+ try{
+ const ms=members(g),base={'小':1000,'中':5000,'大':20000}[s.stage],ratio=Math.min(1,Math.max(.12,score(g,[i.festival,i.kind])/8000)),audience=Math.min(base,Math.round(base*ratio*(.8+Math.random()*.4))),rate=audience/base;s.attendance=audience;s.result=rate>=.9?'大成功':rate>=.7?'成功':rate>=.4?'普通':'不調';s.status='done';const growth=(i.kind==='idol'?{'小':[15,25,5,10,50,250],'中':[30,50,15,25,250,1000],'大':[60,90,30,50,1000,4000]}:{'小':[10,20,25,40,250,1000],'中':[25,40,50,80,1000,4000],'大':[50,75,100,150,4000,15000]})[s.stage],factor=s.result==='大成功'?1.2:s.result==='成功'?1:s.result==='普通'?.8:.6;const gp=Math.round(R(growth[0],growth[1])*factor),gf=Math.round(R(growth[2],growth[3])*factor),followers=Math.round(R(growth[4],growth[5])*factor);if(g){g.fameXp=(Number(g.fameXp)||0)+gf;g.festivalPopularityXp=(Number(g.festivalPopularityXp)||0)+gp;state.idolXFollowers??={};state.idolXFollowers['group:'+g.id]=(Number(state.idolXFollowers['group:'+g.id])||0)+followers;for(const m of ms){m.popularityActivityXp=(Number(m.popularityActivityXp)||0)+Math.round(gp*.5);m.fatigue=Math.min(100,(Number(m.fatigue)||0)+R(...({'小':[5,10],'中':[10,15],'大':[15,25]}[s.stage])));m.mental=Math.max(0,Math.min(100,(Number(m.mental)||50)+(s.result==='大成功'?R(5,10):s.result==='成功'?R(3,5):s.result==='普通'?R(0,2):-R(3,5))));state.idolXFollowers['member:'+m.id]=(Number(state.idolXFollowers['member:'+m.id])||0)+Math.round(followers*.15)}social(i,s,g,'after')}state.agencyFunds=(Number(state.agencyFunds)||0)+s.fee;if(window.IDOL_ACCOUNTING)window.IDOL_ACCOUNTING.record(s.fee,g.id,null,'festival',i.festival+' 出演料');notice(`${i.groupName} ${i.festival}：${s.result}／観客${audience.toLocaleString()}人`)
+ const event=(state.schedule||[]).find(e=>e.festivalSlotId===s.id);if(event)event.done=true;
+ s.finishedOn=key();s.travelled=true;
+ if(i.status==='accepted'&&i.slots.every(z=>['done','cancelled'].includes(z.status)))i.status='finished';
+ save();render();
+ alert(`${i.festival}の出演が完了しました！\n結果：${s.result} ／ 観客：${s.attendance.toLocaleString()}人`);
+ }finally{delete s._executing;}
+}
+function festivalTravel(i,s){
+ if(!i||!s||s.status!=='accepted'||s.date!==key()||s.travelled)return;
+ const g=group(i.groupId);if(!g||!members(g).length){alert('出演できるメンバーがいません。');return;}
+ s.travelled=true;
+ // One-hour trip, consistent with the Tokyo-based venue travel used in other appearances.
+ s.travelMinutes=60;
+ if(Number.isFinite(Number(state.hours)))state.hours=Math.max(0,Number(state.hours)-1);
+ save();render();
+}
+function process(){
+ const d=key();deadline();select();
+ for(const i of data().invitations){
+  const g=group(i.groupId);
+  for(const s of i.slots){
+   if(s.status!=='accepted')continue;
+   if(shift(s.date,-1)===d&&!s.announced&&g){social(i,s,g,'before');s.announced=true;}
+   // Festival performances are player-executed on the event day, never auto-completed.
+   if(s.date<d){s.status='cancelled';s.missed=true;}
+  }
+  if(i.status==='accepted'&&i.slots.every(s=>['done','cancelled'].includes(s.status)))i.status='finished';
+ }
+ save();
+}
+function drawLive(){if(state.tab!=='活動'||state.sub!=='ライブ')return;const root=document.getElementById('content');if(!root||root.querySelector('#festival-integrated'))return;const target=root.querySelector('#liveUpcoming')||root;const section=document.createElement('div');section.id='festival-integrated';section.style.marginTop='16px';const upcoming=data().invitations.flatMap(i=>i.slots.map(s=>({i,s}))).filter(x=>x.s.status==='accepted').sort((a,b)=>a.s.date.localeCompare(b.s.date));const history=data().invitations.flatMap(i=>i.slots.map(s=>({i,s}))).filter(x=>['done','cancelled'].includes(x.s.status)).sort((a,b)=>b.s.date.localeCompare(a.s.date));const todays=data().invitations.flatMap(i=>i.slots.map(s=>({i,s}))).filter(({s})=>s.date===key()&&s.status==='accepted');
+ if(todays.length){
+  let current=root.querySelector('.live-today');
+  if(!current){current=document.createElement('section');current.className='live-today';current.style.cssText='border:1px solid #617396;background:#202b47;padding:18px;border-radius:12px;margin-bottom:22px';current.innerHTML='<h2>本日のライブ</h2>';root.prepend(current);}
+  const empty=[...current.querySelectorAll('p')].find(p=>p.textContent==='本日のライブはありません。');if(empty)empty.remove();
+  for(const {i,s} of todays){
+   const row=document.createElement('div');row.style.cssText='border-top:1px solid #455470;padding:12px 0';
+   row.innerHTML=`<strong>${esc(i.groupName)} ${esc(i.festival)}</strong><p>${esc(i.region)}／${esc(s.stage)}ステージ／${esc(s.time)}開始（${s.duration}分）</p><p>進行：${s.travelled?'会場到着':'移動前'} ／ 出演料 ${Number(s.fee||0).toLocaleString()}円</p>`;
+   const b=document.createElement('button');b.className='primary';
+   b.textContent=s.travelled?`フェスに出演する（${s.duration}分）`:'会場へ移動する';
+   b.onclick=()=>s.travelled?completeFestival(i,s):festivalTravel(i,s);
+   row.append(b);current.append(row);
+  }
+ }
+ const item=({i,s})=>`<div style="padding:9px;border-bottom:1px solid #394765">${esc(s.date)} ${esc(s.time)}｜${esc(i.groupName)} ${esc(i.festival)}｜${esc(s.stage)}ステージ ${s.status==='done'?`｜${esc(s.result)} ${s.attendance}人`:s.status==='cancelled'?'｜キャンセル':''}｜出演料 ${s.fee.toLocaleString()}円</div>`;section.innerHTML=`${upcoming.map(item).join('')}${history.length?`<details style="margin-top:8px"><summary>フェス出演履歴</summary>${history.map(item).join('')}</details>`:''}`;target.append(section)}
 const prevMail=showMailbox;showMailbox=function(){prevMail();if(mailFolder!=='inbox'||!mailSelected)return;const m=mailItems().find(x=>x.id===mailSelected);if(!m?.festivalInvitationId)return;const i=data().invitations.find(x=>x.id===m.festivalInvitationId),detail=document.querySelector('#drawerBody .maildetail');if(!i||!detail)return;const line=document.createElement('div');line.style.cssText='display:flex;gap:8px;margin-top:12px;flex-wrap:wrap';if(i.status==='offered'&&key()<=i.deadline){for(const [label,yes] of [['出演を承諾する',true],['出演を辞退する',false]]){const b=document.createElement('button');b.textContent=label;b.onclick=()=>answer(i.id,yes);line.append(b)}}else line.textContent='回答状況：'+({'accepted':'承諾済み','finished':'出演終了','declined':'辞退済み','expired':'回答期限切れ'}[i.status]||i.status);detail.append(line)};
 const prevDay=addDay;addDay=function(){prevDay();process()};const prevRender=render;render=function(){prevRender();drawLive()};process();
 window.__idolRoadFestival={catalog:C,data,select,answer,process};
