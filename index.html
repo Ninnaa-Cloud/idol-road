@@ -149,38 +149,50 @@ function irDecompressSave(stored){
 }
 
 const KEY='idol-road-save-v1';const mainTabs=['ホーム','アイドル','活動','スケジュール','経営'];const subTabs={'アイドル':['オーディション','グループ'],'活動':['ライブ','イベント','音楽番組','バラエティ番組','ドラマ・映画'],'経営':['広報','経理','制作','チケット']};const defaults=()=>({agency:'',agencyFunds:50000000,year:2026,month:4,day:1,hours:12,tab:'ホーム',sub:'',notifications:[],criticalDates:[],schedule:[],applicantPhotoAssignments:{}});let state=defaults();window.__idolRoadSNSAccounts=()=>({agency:state.agency||"事務所",agencyReading:state.agencyReading||"",groups:(state.groups||[]).map(g=>({id:String(g.id??g.name),name:g.name||"グループ",reading:g.nameReading||""})),setReading:(id,reading)=>{if(id==="agency")state.agencyReading=reading;else{const g=(state.groups||[]).find(g=>"group:"+String(g.id??g.name)===id);if(g)g.nameReading=reading;}save();}});let openPanel='';let calendarView=null;const el=id=>document.getElementById(id);const pad=n=>String(n).padStart(2,'0');const dateObj=()=>new Date(state.year,state.month-1,state.day);const dateKey=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;const today=()=>dateKey(dateObj());function save(){localStorage.setItem(KEY,irCompressSave(JSON.stringify(state)))}function load(){try{const stored=localStorage.getItem(KEY);const s=stored?JSON.parse(irDecompressSave(stored)):null;if(s&&typeof s==='object'&&typeof s.agency==='string'&&Number.isInteger(s.year)&&Number.isInteger(s.month)&&Number.isInteger(s.day)&&Number.isFinite(s.hours)&&s.hours>=0&&s.hours<=12&&mainTabs.includes(s.tab)&&Array.isArray(s.notifications)&&Array.isArray(s.schedule)&&Array.isArray(s.criticalDates)){state={...defaults(),...s};return}}catch(e){}state=defaults()}
-function notice(msg){state.notifications.unshift({date:today(),text:msg,read:false});save();updateNotificationBadge()}function msg(s){el('status').textContent=s}function syncFinishedLiveSchedules(){
- for(const x of state.externalInvites||[]){
-  if(!x.liveDayRun?.finished)continue;
-  const f=x.liveDayRun.financial;
+function notice(msg){state.notifications.unshift({date:today(),text:msg,read:false});save();updateNotificationBadge()}function msg(s){el('status').textContent=s}// Keep the two historical representations of an external appearance in sync.
+// A verified completed performance in EITHER record counts as finished; a
+// mere accepted invitation or passed calendar date does not.
+function irLiveRunComplete(run){return !!(run&&(run.finished===true||run.stage==='finished'));}
+function irExternalRunPair(id,date){
+ const key=String(id);
+ const invitation=(state.externalInvites||[]).find(v=>String(v.id)===key&&v.date===date);
+ const hosted=(state.hostedLives||[]).find(v=>v.type==='external'&&v.dates?.includes(date)&&(String(v.id)===key||String(v.externalInviteId||'')===key));
+ return {invitation,hosted,hostedRun:hosted?.liveDayRuns?.[(hosted.dates||[]).indexOf(date)]||hosted?.liveDayRun};
+}
+function irLivePerformanceFinished(liveId,date){
+ const id=String(liveId);
+ const {invitation,hosted,hostedRun}=irExternalRunPair(id,date);
+ if(irLiveRunComplete(invitation?.liveDayRun)||irLiveRunComplete(hostedRun))return true;
+ // For a linked hosted record, also inspect the invitation by its original ID.
+ const linked=(state.externalInvites||[]).find(v=>v.date===date&&String(v.id)===String(hosted?.externalInviteId||''));
+ if(irLiveRunComplete(linked?.liveDayRun))return true;
+ const live=(state.hostedLives||[]).find(v=>String(v.id)===id&&v.dates?.includes(date));
+ if(!live)return false;
+ const index=live.dates.indexOf(date);
+ return irLiveRunComplete(live.liveDayRuns?.[index]||live.liveDayRun);
+}
+function syncFinishedLiveSchedules(){
+ for(const inv of state.externalInvites||[]){
+  const pair=irExternalRunPair(inv.id,inv.date);
+  const canonical=irLiveRunComplete(inv.liveDayRun)?inv.liveDayRun:(irLiveRunComplete(pair.hostedRun)?pair.hostedRun:null);
+  if(!canonical)continue;
+  if(!irLiveRunComplete(inv.liveDayRun))inv.liveDayRun=canonical;
+  if(pair.hosted){
+   pair.hosted.liveDayRuns??={};
+   const index=pair.hosted.dates.indexOf(inv.date);
+   if(index>=0&&!irLiveRunComplete(pair.hosted.liveDayRuns[index]))pair.hosted.liveDayRuns[index]=canonical;
+  }
+  const f=canonical.financial;
   if(f&&f.kind==='external'){
    f.venueCost=0;f.net=(Number(f.gross)||0)-(Number(f.travelCost)||0);
-   x.settlement=f.net;x.venueCost=0;
-   const old=(state.externalSettlements||[]).find(v=>String(v.id)===String(x.id));
+   inv.settlement=f.net;inv.venueCost=0;
+   const old=(state.externalSettlements||[]).find(v=>String(v.id)===String(inv.id));
    if(old){old.venueCost=0;old.amount=f.net;}
   }
  }
  for(const sc of state.schedule||[]){
-  if(!sc||sc.done||!sc.liveId)continue;
-  if(irLivePerformanceFinished(sc.liveId,sc.date)){sc.done=true;continue;}
-  const inv=(state.externalInvites||[]).find(x=>String(x.id)===String(sc.liveId));
-  if(inv?.liveDayRun?.finished&&inv.date===sc.date){sc.done=true;continue;}
-  const live=(state.hostedLives||[]).find(x=>String(x.id)===String(sc.liveId));
-  if(live){const idx=(live.dates||[]).indexOf(sc.date);if(idx>=0&&live.liveDayRuns?.[idx]?.finished)sc.done=true;}
+  if(sc&&!sc.done&&sc.liveId&&irLivePerformanceFinished(sc.liveId,sc.date))sc.done=true;
  }
-}
-function irLivePerformanceFinished(liveId,date){
- const id=String(liveId);
- const inv=(state.externalInvites||[]).find(x=>String(x.id)===id);
- if(inv&&inv.date===date)return !!(inv.liveDayRun?.finished||inv.liveDayRun?.stage==='finished');
- const live=(state.hostedLives||[]).find(x=>String(x.id)===id||String(x.externalInviteId||'')===id);
- if(!live)return false;
- const i=(live.dates||[]).indexOf(date);
- if(i<0)return false;
- const r=live.liveDayRuns?.[i]||((live.type==='external')?live.liveDayRun:null);
- if(r?.finished||r?.stage==='finished')return true;
- const linked=(state.externalInvites||[]).find(x=>String(x.id)===String(live.externalInviteId||'')&&x.date===date);
- return !!(linked?.liveDayRun?.finished||linked?.liveDayRun?.stage==='finished');
 }
 function pending(){syncFinishedLiveSchedules();return state.schedule.some(x=>x&&x.date===today()&&!x.done)}function blocked(d){return state.criticalDates.find(x=>x&&x.date===dateKey(d)&&(x.type==='重大出来事'||x.type==='ワンマンライブ'))}function finishDay(){/* 未実施の予定を実行したことにはしない */save()}function addDay(){const d=dateObj();d.setDate(d.getDate()+1);state.year=d.getFullYear();state.month=d.getMonth()+1;state.day=d.getDate();state.hours=12;if(typeof idolXDailyFollowers==='function')idolXDailyFollowers()}function drawCalendar(){const content=el('content');content.className='';content.innerHTML='';if(!calendarView)calendarView={year:state.year,month:state.month};const {year,month}=calendarView;const head=document.createElement('div');head.className='calendar-head';const title=document.createElement('h3');title.textContent=`${year}年 ${month}月`;const controls=document.createElement('div');controls.className='calendar-controls';function nav(label,change){const b=document.createElement('button');b.textContent=label;b.onclick=()=>{const d=new Date(calendarView.year,calendarView.month-1+change,1);calendarView={year:d.getFullYear(),month:d.getMonth()+1};drawCalendar()};controls.append(b)}nav('‹ 前月',-1);const now=document.createElement('button');now.textContent='今月へ';now.onclick=()=>{calendarView={year:state.year,month:state.month};drawCalendar()};controls.append(now);nav('翌月 ›',1);head.append(title,controls);content.append(head);const grid=document.createElement('div');grid.className='calendar-grid';grid.setAttribute('aria-label',`${year}年${month}月のカレンダー`);for(const day of '日月火水木金土'){const w=document.createElement('div');w.className='weekday';w.textContent=day;grid.append(w)}const first=new Date(year,month-1,1);const offset=first.getDay();const days=new Date(year,month,0).getDate();const cells=Math.ceil((offset+days)/7)*7;for(let i=0;i<cells;i++){const d=new Date(year,month-1,i-offset+1);const key=dateKey(d);const cell=document.createElement('div');cell.className='calendar-day'+(d.getMonth()!==month-1?' other':'')+(key===today()?' today':'');const number=document.createElement('span');number.className='number';number.textContent=d.getDate();cell.append(number);const holiday=liveJapanHolidayName(key);if(holiday){cell.classList.add('jp-holiday');const h=document.createElement('span');h.className='jp-holiday-name';h.textContent=holiday;cell.append(h)}if(key===today()){const tag=document.createElement('span');tag.className='today-tag';tag.textContent='今日';cell.append(tag)}const events=document.createElement('div');events.className='calendar-events';if(d.getDay()===2||d.getDay()===4){const recurring=document.createElement('div');recurring.className='calendar-event recurring-lesson';recurring.textContent='全体レッスン日（各グループ1回・2時間）';events.append(recurring)}for(const item of state.schedule.filter(x=>x&&x.date===key)){const event=document.createElement('div');event.className='calendar-event';event.textContent=item.title||item.name||'予定';events.append(event)}for(const booking of (state.handshakeEvents||[]).filter(x=>x&&x.date===key&&(x.status==='booked'||x.status==='finished'))){const event=document.createElement('div');event.className='calendar-event handshake-calendar-event';event.textContent=`${booking.groupName||'グループ'}｜${booking.type||'握手会・写真会'}（10:00〜18:00）${booking.status==='finished'?'［開催済み］':''}`;event.title=`${booking.groupName||'グループ'} ${booking.type||'イベント'}：10:00〜18:00`;events.append(event)}cell.append(events);grid.append(cell)}content.append(grid)}function applicantPhotoSet(applicantId){if(!state.applicantPhotoAssignments||typeof state.applicantPhotoAssignments!=='object')state.applicantPhotoAssignments={};const id=String(applicantId);if(!Number.isInteger(state.applicantPhotoAssignments[id])||state.applicantPhotoAssignments[id]<0||state.applicantPhotoAssignments[id]>=applicantPhotoSets.length){state.applicantPhotoAssignments[id]=Math.floor(Math.random()*applicantPhotoSets.length);save()}return applicantPhotoSets[state.applicantPhotoAssignments[id]]}
 function drawAuditionPhotoPreview(){const box=el('content');box.className='';box.innerHTML='<p class="muted">応募者の写真セット（上半身アップ・全身）を確認できます。</p><div class="photoPreview"><div><p>上半身アップ</p><img id="applicantBust" alt="応募者の上半身シルエット"></div><div><p>全身</p><img id="applicantFull" alt="応募者の全身シルエット"></div></div><button id="sampleApplicant">別の応募者サンプルを表示</button>';let n=0;function show(){const photos=applicantPhotoSet('preview-'+n);el('applicantBust').src=photos[0];el('applicantFull').src=photos[1]}el('sampleApplicant').onclick=()=>{n++;show()};show()}
@@ -1662,7 +1674,7 @@ const EXT_EVENT_BASE=['IDOL LIVE JAPAN','アイドル甲子園','GIRLS BOX','MAR
 /* 既存イベント名をモチーフにした100種のゲーム内架空公演タイトル。 */
 const EXT_EVENT_NAMES=Array.from({length:100},(_,i)=>EXT_EVENT_BASE[i%EXT_EVENT_BASE.length]+' '+['SPECIAL','DAY','NIGHT','EXTRA','FEST'][Math.floor(i/EXT_EVENT_BASE.length)]+' #'+(i+1));
 const EXT_IDOLS=['Appare!','FES☆TIVE','まねきケチャ','ナナランド','真っ白なキャンバス','高嶺のなでしこ','Jams Collection','iLiFE!','のんふぃく！','夜光性アミューズ','NEO JAPONISM','Devil ANTHEM.','かすみ草とステラ','#ババババンビ','#よーよーよー','Peel the Apple','MyDearDarlin’','可憐なアイボリー','CANDY TUNE','FRUITS ZIPPER','SWEET STEADY','CUTIE STREET','Task have Fun','二丁目の魁カミングアウト','Ringwanderung','INUWASI','yosugala','Kolokol','クマリデパート','虹のコンキスタドール','でんぱ組.inc','きゅるりんってしてみて','AVAM','Palette Parade','ドラマチックレコード','タイトル未定','fishbowl','situasion','きのホ。','RAY','美味しい曖昧','アンスリューム','ワールズエンド。','手羽先センセーション','ワンダーウィード 天','花いろは','SAI²Rium','ネコプラpixx.','シュレーディンガーの犬','ベンジャス！'];
-const EXT_RANGES=[[3,5],[5,8],[8,12],[10,15],[12,18],[15,22],[18,26],[20,30]];
+const EXT_RANGES=[[10,14],[12,17],[14,20],[16,22],[18,25],[20,28],[22,30],[24,32]];
 const extPick=a=>a[Math.floor(Math.random()*a.length)];
 const extRand=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const extDateAdd=(date,n)=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+n);return dateKey(d)};
@@ -1675,7 +1687,17 @@ function extPlanMonth(){
   const rank=Math.max(0,GRADE_ORDER.indexOf(groupPopularityDetails(g).grade));
   const [min,max]=EXT_RANGES[rank];const count=extRand(min,max);
   const days=new Date(state.year,state.month,0).getDate();
-  state.externalPlans[key]={groupId:g.id,month,rank,days:Array.from({length:count},()=>extRand(state.day,days)).sort((a,b)=>a-b),sent:[]};
+  // Spread invitations across remaining days without duplicates; one mail per date.
+  const start=Math.max(1,Math.min(days,Number(state.day)||1));
+  const available=days-start+1;
+  const scheduledCount=Math.min(count,available);
+  const scheduledDays=[];
+  for(let i=0;i<scheduledCount;i++){
+   const from=start+Math.floor(i*available/scheduledCount);
+   const to=start+Math.floor((i+1)*available/scheduledCount)-1;
+   scheduledDays.push(extRand(from,Math.max(from,to)));
+  }
+  state.externalPlans[key]={groupId:g.id,month,rank,days:scheduledDays,sent:[]};
  }
 }
 function extCreateInvitation(g){
@@ -2132,7 +2154,7 @@ function action(x,i,stage){
   }
   r.liveSkillGrowthApplied=true;
  }
- if(r.finished){for(const sc of state.schedule||[]){if(sc&&String(sc.liveId)===String(x.id)&&sc.date===dayOf(x,i))sc.done=true;}}
+ if(r.finished){if(isExternal(x)){const inv=(state.externalInvites||[]).find(v=>String(v.id)===String(x.externalInviteId||x.id)&&v.date===dayOf(x,i));if(inv)inv.liveDayRun=r;}for(const sc of state.schedule||[]){if(sc&&String(sc.liveId)===String(x.id)&&sc.date===dayOf(x,i))sc.done=true;}}
  save();renderLiveHost();if(r.finished)report(x,i);
 }
 window.IR_AUTO_LIVE_STAGE=(x,i,stage)=>{const before=JSON.stringify(recordOf(x,i)||null);action(x,i,stage);return before!==JSON.stringify(recordOf(x,i)||null)};
