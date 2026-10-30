@@ -1690,6 +1690,26 @@ function extPlanMonth(){
   const key=month+'_'+g.id;
   const existingPlan=state.externalPlans[key];
   if(existingPlan){
+   // Repair legacy plan slots that were marked sent despite never producing an invite.
+   // Run only once, only in the current month, without modifying past months or actual mails.
+   if(!existingPlan._irDeliveryReconciledV157){
+    existingPlan._irDeliveryReconciledV157=true;
+    const sent=Array.isArray(existingPlan.sent)?existingPlan.sent:[];
+    const delivered=(state.externalInvites||[]).filter(v=>String(v.groupId)===String(g.id)&&String(v.received||'').slice(0,7)===month).length;
+    const missing=Math.max(0,sent.length-delivered);
+    if(missing){
+     const restore=sent.slice(-missing);
+     const daysInMonth=new Date(state.year,state.month,0).getDate();
+     const used=new Set((existingPlan.days||[]).map(Number));
+     const options=[];
+     for(let d=Math.max(1,Number(state.day)||1);d<=daysInMonth;d++)if(!used.has(d))options.push(d);
+     for(const [j,idx] of restore.entries()){
+      const proposed=options.length?options.splice(Math.min(options.length-1,Math.floor(j*options.length/Math.max(1,restore.length))),1)[0]:Math.min(daysInMonth,Math.max(1,Number(state.day)||1));
+      existingPlan.days[idx]=proposed;
+     }
+     existingPlan.sent=sent.filter(i=>!restore.includes(i));
+    }
+   }
    // One-time recovery of earlier, low-volume monthly plans after the invite-rate upgrade.
    // Keep existing day indices unchanged because sent[] stores those indices.
    if(!existingPlan._irExpandedV156){
@@ -1726,7 +1746,7 @@ function extPlanMonth(){
  }
 }
 function extCreateInvitation(g){
- const venues=LIVE_VENUES.filter(v=>Number(v[2])>0&&Number(v[2])<=1000);if(!venues.length)return;
+ const venues=LIVE_VENUES.filter(v=>Number(v[2])>0&&Number(v[2])<=1000);if(!venues.length)return false;
  // External joint events: 75% Tokyo metropolitan area, 25% other regions.
  const metro=venues.filter(v=>['東京都','神奈川県','千葉県','埼玉県'].includes(v[0]));
  const outside=venues.filter(v=>!['東京都','神奈川県','千葉県','埼玉県'].includes(v[0]));
@@ -1743,6 +1763,7 @@ function extCreateInvitation(g){
  state.externalInvites.push(inv);
  const body=`${liveInquiryOffice()}\nご担当者様\n\nお世話になります。\n${promoter}です。\n\n下記の「${event}」への、出演をお願いしたく、ご連絡致しました。\n\n対バン名：${event}\n日程：${date}\n開催時間：${time}\n会場：${v[1]}（${v[0]}・定員${v[2]}人）\n出演アイドル：${others.join('、')}\n出演依頼グループ：${inv.groupName}\n条件：${condition}\n回答期限：${inv.deadline}（受信から5ゲーム日）\n備考：自グループ集客予想人数 ${predictedAttendance}人（当日の実績は変動します）\n東京発の移動手段：${inv.travelMethod}\n移動費（往復・所属メンバー分）：${inv.travelCost.toLocaleString()}円\n\nご検討の程よろしくお願いいたします。\n\n${promoter}\n\n※本メールはゲーム内の架空の出演依頼です。`;
  liveInquiryMail('inbox','【対バン出演依頼】'+event,promoter,liveInquiryOffice(),body,{externalInviteId:id});
+ return true;
 }
 function extProcess(){
  extPlanMonth();const now=today(),month=String(state.year)+'-'+pad(state.month);
@@ -1763,8 +1784,8 @@ function extProcess(){
     // On the final days, the skipped invitation is simply not issued.
     p.sent.push(i);continue;
    }
-   extCreateInvitation(g);
-   p.sent.push(i);
+   // Only confirm delivery after a real invitation and mail have been created.
+   if(extCreateInvitation(g)===true)p.sent.push(i);
   }
  }
  for(const inv of state.externalInvites||[]){if(inv.status==='pending'&&now>inv.deadline)inv.status='expired'}
@@ -4210,6 +4231,26 @@ const IG=inc=>groupOf(inc?.groupId);const IM=inc=>memberOf(IG(inc),inc?.memberId
 const date=()=>typeof today==='function'?today():`${state.year}-${String(state.month).padStart(2,'0')}-${String(state.day).padStart(2,'0')}`;
 const accountPosts=()=>state.idolXPosts??=[];
 const incidentList=()=>state.idolRoadIncidents??=[];
+// Keep the existing notification bell informed of every exposure/magazine incident.
+function ensureIncidentNotification(inc, historical=false){
+ if(!inc||!inc.id)return false;
+ state.notifications??=[];
+ const key=String(inc.id);
+ if(state.notifications.some(n=>String(n.irIncidentId||'')===key)){inc.irNotificationV158=true;return false;}
+ const g=IG(inc),m=IM(inc),name=memberName(m),group=groupName(g);
+ const details=`${group}・${name}に${inc.type||'不祥事'}の疑惑が浮上しました。`;
+ const text=historical?`【炎上履歴】${details}（対応：${inc.decision||'確認中'}）`:`【炎上発生】${details}Xの暴露・週刊誌投稿を確認してください。本人からの連絡はLINEに届きます。`;
+ state.notifications.unshift({date:inc.date||date(),text,read:historical&&inc.date!=='2026-10-31',irIncidentId:key});
+ inc.irNotificationV158=true;
+ try{if(typeof updateNotificationBadge==='function')updateNotificationBadge();}catch(e){}
+ return true;
+}
+function restoreMissingIncidentNotifications(){
+ let changed=false;
+ for(const inc of incidentList())if(ensureIncidentNotification(inc,true))changed=true;
+ if(changed)save();
+}
+
 const accountId=(kind,id)=>kind==='member'?'member:'+id:kind==='group'?'group:'+id:kind;
 function ageOf(m){
  const raw=String(m?.birthDate||'');const mt=raw.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);if(mt){let age=Number(state.year)-Number(mt[1]);if(Number(state.month)<Number(mt[2])||(Number(state.month)===Number(mt[2])&&Number(state.day)<Number(mt[3])))age--;return age;}
@@ -4409,7 +4450,7 @@ function respond(inc,decision){
  if(decision!=='処分を見送る'){officialPost(inc,decision);if(decision!=='契約解除'&&decision!=='活動休止')maybeMemberPost(inc,decision,decision);}if(decision==='契約解除')state.idolXPosts=accountPosts().filter(p=>String(p.account)!=='member:'+String(inc.memberId));accountReactions(inc,decision);if(decision!=='処分を見送る')addReplies(inc,decision);save();
 }
 function datePlusMonths(n){const d=new Date(state.year,state.month-1,1);const originalDay=Number(state.day);d.setMonth(d.getMonth()+n);const lastDay=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(originalDay,lastDay));return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismissed&&!m.idolRoadResumePending&&m.activityStatus!=='活動休止'&&!m.idolRoadPauseUntil);if(!all.length)return;const eligible=all.filter(({m})=>{const a=ageOf(m);return a!==null&&a<20});let pool=['熱愛','ファンとの私的交流','ファンとの私的交流','熱愛'];if(eligible.length)pool.push('未成年飲酒','未成年喫煙');const type=pool[rnd(0,pool.length-1)];const baseCandidates=(type==='未成年飲酒'||type==='未成年喫煙')?eligible:all;const candidates=baseCandidates.filter(({m})=>!incidentList().some(inc=>String(inc.memberId)===String(m.id)&&String(inc.date).slice(0,4)===String(state.year)));if(!candidates.length)return;const chosen=candidates[rnd(0,candidates.length-1)],g=chosen.g,m=chosen.m;const truth=Math.random()<.62;const inc={id:'incident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),date:date(),groupId:g.id,memberId:m.id,type,truth:truth?'unconfirmed_true':'unconfirmed_false',status:'未確認',posts:[],publishedMagazineIds:[]};incidentList().unshift(inc);const useMagazine=Number(m.popularity||m.fame||0)>=70;
+function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismissed&&!m.idolRoadResumePending&&m.activityStatus!=='活動休止'&&!m.idolRoadPauseUntil);if(!all.length)return;const eligible=all.filter(({m})=>{const a=ageOf(m);return a!==null&&a<20});let pool=['熱愛','ファンとの私的交流','ファンとの私的交流','熱愛'];if(eligible.length)pool.push('未成年飲酒','未成年喫煙');const type=pool[rnd(0,pool.length-1)];const baseCandidates=(type==='未成年飲酒'||type==='未成年喫煙')?eligible:all;const candidates=baseCandidates.filter(({m})=>!incidentList().some(inc=>String(inc.memberId)===String(m.id)&&String(inc.date).slice(0,4)===String(state.year)));if(!candidates.length)return;const chosen=candidates[rnd(0,candidates.length-1)],g=chosen.g,m=chosen.m;const truth=Math.random()<.62;const inc={id:'incident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),date:date(),groupId:g.id,memberId:m.id,type,truth:truth?'unconfirmed_true':'unconfirmed_false',status:'未確認',posts:[],publishedMagazineIds:[]};incidentList().unshift(inc);ensureIncidentNotification(inc,false);const useMagazine=Number(m.popularity||m.fame||0)>=70;
  if(useMagazine){const mag=MAG[rnd(0,MAG.length-1)];inc.posts.push(xPost(mag.id,mag.name,mag.handle,magText(mag,inc),{incidentId:inc.id,incidentType:type,kind:'magazine',groupId:g.id}).id);inc.publishedMagazineIds.push(mag.id);}
  else inc.posts.push(xPost(LEAK.id,LEAK.name,LEAK.handle,rumorText(type,m,g),{incidentId:inc.id,incidentType:type,kind:'leak',groupId:g.id}).id);
  // 事件と同時にファン・一般ユーザーの反応を生成。Xのおすすめ欄に投稿として流す。
@@ -4477,6 +4518,7 @@ const oldAddDay=addDay;addDay=function(){const result=oldAddDay.apply(this,argum
 // When opening the existing X overlay, add the incident-management entry without changing tabs or page layout.
 /* X内の炎上管理画面は使用しない。事件の発生・X投稿処理は維持する。 */
 
+restoreMissingIncidentNotifications();
 window.IDOL_ROAD_INCIDENTS={daily,ensureResumeNotices,trigger:triggerIncident,resume:(id)=>{
  const inc=incidentList().find(x=>String(x.id)===String(id));if(!inc)return false;
  const m=IM(inc);if(!m||!m.idolRoadResumePending||m.idolRoadDismissed||!m.idolRoadPauseUntil||m.idolRoadPauseUntil>date())return false;
@@ -4501,17 +4543,22 @@ const active=(groupId,at)=>{
 };
 function penalty(groupId,at,kind){
  const incidents=active(groupId,at);
- // A group can have multiple scandals; the strongest active impact applies, not compounded.
+ // Each incident's impact fades over time. Multiple incidents do not stack.
  let impact=0;
  for(const inc of incidents){
   const elapsed=(stamp(at)-stamp(inc.date))/86400000;
   const severity=['小','中','大'].includes(inc.severity)?inc.severity:'中';
-  const days=kind==='live'?30:({小:30,中:60,大:90}[severity]);
+  const days=kind==='live'?30:({小:7,中:14,大:21}[severity]);
   if(elapsed>=days)continue;
-  const value=kind==='live'?({小:[.02,.05],中:[.05,.10],大:[.10,.20]}[severity]):({小:.30,中:.60,大:.90}[severity]);
-  // Officially disproved allegations stop having an effect immediately.
-  const amount=kind==='live'?(inc.livePenaltyRate??(inc.livePenaltyRate=value[0]+Math.random()*(value[1]-value[0]))):value;
-  impact=Math.max(impact,amount);
+  const fade=Math.max(0,1-elapsed/days);
+  if(kind==='live'){
+   const range=({小:[.02,.05],中:[.05,.10],大:[.10,.20]}[severity]);
+   const original=(inc.livePenaltyRate??(inc.livePenaltyRate=range[0]+Math.random()*(range[1]-range[0])));
+   impact=Math.max(impact,original*fade);
+  }else{
+   const peak=({小:.20,中:.35,大:.50}[severity]);
+   impact=Math.max(impact,peak*fade);
+  }
  }
  return Math.min(1,impact);
 }
@@ -5724,6 +5771,94 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
   const lines=unique.slice(0,12).map(x=>{const g=(state.groups||[]).find(g=>String(g.id)===x.groupId);const person=x.memberId==null?'グループ全体':(g?.members||[]).find(m=>String(m.id)===x.memberId);const name=typeof person==='string'?person:(person?.stageName||person?.name||person?.nickname||'個人メンバー');const hm=n=>String(Math.floor(n)).padStart(2,'0')+':'+String(Math.round(n%1*60)).padStart(2,'0');return `・${x.date} ${hm(x.start)}〜${hm(x.end)}　${x.title}（${name}）`;});
   return confirm('【スケジュール重複警告】\n以下の予定と時間帯が重なっています。\n'+lines.join('\n')+(unique.length>12?'\nほか'+(unique.length-12)+'件':'')+'\n\n既存の予定は自動で取り消されません。\n重複したまま続行しますか？');
  };
+})();
+</script>
+<script id="ir-scandal-multiday-v159">
+/* Multi-day X discussion for both exposure/magazine scandals and member-post controversies.
+   Does not alter popularity, mental, invitation, or official-statement decisions. */
+(function(){'use strict';
+ if(typeof state==='undefined')return;
+ const todayKey=()=>`${state.year}-${String(state.month).padStart(2,'0')}-${String(state.day).padStart(2,'0')}`;
+ const dayDiff=(a,b)=>Math.round((new Date(a+'T12:00:00')-new Date(b+'T12:00:00'))/86400000);
+ const sample=(items,k)=>items[Math.abs(k)%items.length];
+ const hash=(s)=>{let h=2166136261;for(const c of String(s)){h=Math.imul(h^c.charCodeAt(0),16777619)}return h>>>0;};
+ const members=()=>state.groups||[];
+ const group=(id)=>members().find(g=>String(g.id)===String(id));
+ const person=(g,id)=>(g?.members||[]).find(m=>String(m.id)===String(id));
+ const name=(m)=>m?.stageName||m?.name||'メンバー';
+ const rankCount=(g,m)=>{
+  const f=state.idolXFollowers||{};
+  const groupFollowers=Number(f['group:'+g.id]||0),memberFollowers=Number(f['member:'+m.id]||0);
+  return Math.max(0,Math.min(2,Math.floor(Math.log10(1+Math.max(groupFollowers,memberFollowers))/3)));
+ };
+ const discussions=[
+  ['本人の話を聞くまでは決めつけたくない。','まだ確定していないのに叩きすぎじゃない？','推してるから心配。落ち着いて説明を待ちたい。','他のメンバーまで責めるのは違うと思う。','ファンとしては事実を知りたいだけなんだよね。'],
+  ['好きだからこそ今回の話は正直ショック。','何日もこの話が流れてきて気持ちが落ち着かない。','今まで応援してきたから複雑な気持ち。','もう少しきちんと向き合ってほしかった。','これでこれからの活動はどうなるんだろう。'],
+  ['この話まだ話題になってるんだ。','昨日からずっとXで流れてくる。','アイドル界隈じゃないけどニュース見た。','拡散されてるけど何が確認済みの情報なの？','騒ぎになってるから調べたけど、断定はできないよね。'],
+  ['この件、対応に納得できない人もいると思う。','騒ぎをスルーしても疑問は残るよね。','事実ならもっと慎重に行動してほしかった。','好き嫌いとは別に今回の対応は気になる。','これだけ反応が続くと影響は大きそう。'],
+  ['公式の説明を見た。これ以上憶測を広げたくない。','訂正情報も広まってほしい。','事実じゃなかったなら安心した。','疑惑だけで広まるのは怖いな。']
+ ];
+ function buildEntries(){
+  const entries=[];
+  for(const e of state.idolRoadIncidents||[])entries.push({id:'exposure:'+e.id,date:e.date,groupId:e.groupId,memberId:e.memberId,severity:e.severity||'中',falseClaim:e.truth==='false'||e.decision==='事実ではない',resolved:e.resolvedDate,kind:'exposure',ref:e});
+  for(const e of state.irSnsFire?.events||[])entries.push({id:'statement:'+e.id,date:e.date,groupId:e.groupId,memberId:e.memberId,severity:e.severity||'中',falseClaim:false,resolved:e.decidedOn,kind:'statement',ref:e});
+  return entries;
+ }
+ function fillDay(e,day){
+  const age=dayDiff(day,e.date),duration=({小:2,中:4,大:7}[e.severity]||4);
+  if(age<0||age>=duration)return false;
+  if(e.falseClaim&&e.resolved&&dayDiff(day,e.resolved)>0)return false;
+  const g=group(e.groupId),m=person(g,e.memberId);if(!g||!m)return false;
+  state.irScandalTimelineV159??={};const ledger=state.irScandalTimelineV159;
+  const key=e.id+':'+day;
+  // Daily emotional toll starts on the NEXT day; the first-day impact is already
+  // applied by the original incident / SNS-fire implementation.
+  // Keep a separate once-per-incident-per-day ledger, including when a day's
+  // timeline posts already exist in an older save.
+  if(age>=1){
+   state.irScandalMentalDailyV161??={};
+   const mentalLedger=state.irScandalMentalDailyV161;
+   if(!Object.prototype.hasOwnProperty.call(mentalLedger,key)){
+    const range=({小:[2,4],中:[3,6],大:[5,9]}[e.severity]||[3,6]);
+    const loss=range[0]+(hash('mental:'+key)%(range[1]-range[0]+1));
+    m.mental=Math.max(0,Math.min(100,Number(m.mental??70)-loss));
+    mentalLedger[key]=loss;
+    // When a day's posts are already present, this still counts as a save-worthy update.
+    if(ledger[key])return true;
+   }
+  }
+  if(ledger[key])return false;
+  const base=({小:2,中:4,大:7}[e.severity]||4);
+  const volume=base+rankCount(g,m); // Clear large > medium > small, without unlimited posts on low-fame groups.
+  const remaining=age===0?1:Math.max(.45,1-(age/duration)*.5);
+  const count=Math.max(1,Math.round(volume*remaining));
+  const types=e.falseClaim?[0,2,4]:e.severity==='小'?[0,0,1,2]:e.severity==='中'?[0,1,1,2,3]:[0,1,1,2,2,3,3];
+  const posts=state.idolXPosts??=[];
+  const subject=name(m),groupName=g.name||'所属グループ';
+  for(let i=0;i<count;i++){
+   const h=hash(key+':'+i),type=sample(types,h),kind=(type===2||type===3)?'general':'fan',body=sample(discussions[type],Math.floor(h/97));
+   const author=kind==='general'?sample(['日常のつぶやき','ニュースを見た人','通りすがり','タイムライン観測','話題を追う人'],Math.floor(h/11)):sample(['推しを見守りたい','現場通い','アイドル好き','今日も推し活','ファンのひとり'],Math.floor(h/17));
+   const reactions=Math.max(1,Math.round((1+rankCount(g,m)*3+({小:1,中:4,大:9}[e.severity]||4))*(.5+(h%100)/100)));
+   posts.unshift({id:'irsc159_'+h+'_'+age+'_'+i,account:kind+':irsc159:'+e.id+':'+age+':'+i,name:author,handle:'@ir_fan_'+h.toString(36),body:`${subject}（${groupName}）の件、${body}`,date:day,likes:reactions,reposts:Math.round(reactions*.07),organicReposts:Math.round(reactions*.07),incidentId:e.kind==='exposure'?e.ref.id:null,irSnsFireId:e.kind==='statement'?e.ref.id:null,irScandalWaveV159:true});
+  }
+  ledger[key]=count;
+  return true;
+ }
+ function update(){
+  const now=todayKey();let changed=false;
+  for(const e of buildEntries()){
+   // Only generate today's discussion: never fabricate reactions for old past dates.
+   if(fillDay(e,now))changed=true;
+  }
+  if(changed&&typeof save==='function')save();
+ }
+ const previousAddDay=addDay;
+ addDay=function(){const result=previousAddDay.apply(this,arguments);try{update()}catch(err){console.error('SNS scandal wave:',err)}return result};
+ // New scandals can be triggered by a render after the date-change handler.
+ const previousRender=render;
+ render=function(){const result=previousRender.apply(this,arguments);try{update()}catch(err){console.error('SNS scandal wave:',err)}return result};
+ update();
+ window.IDOL_ROAD_SCANDAL_WAVES_V159={update};
 })();
 </script>
 </body></html>
