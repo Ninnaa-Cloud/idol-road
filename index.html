@@ -3222,6 +3222,19 @@ window.IDOL_BOOKING={
 </script>
 <script>
 
+/* Shared invitation demand: group recognition, group popularity, member popularity and field-specific SS-level skills. */
+function IR_INVITATION_DEMAND(g,m,field){
+ const clamp=v=>Math.max(0,Math.min(1,(Number(v)||0)/8000));
+ const fame=clamp(g?.fame??g?.recognition??g?.awareness??g?.nameRecognition??0);
+ const gp=clamp(groupPopularityPoints(g).total);
+ const members=(g?.members||[]).filter(x=>!x.idolRoadDismissed);
+ const audience=m?[m]:members;
+ const mp=audience.length?audience.reduce((t,x)=>t+clamp(popularityPoints(x)),0)/audience.length:0;
+ const fields=field==='music'?['歌','ダンス']:field==='variety'?['トーク','ファン対応','SNS']:['演技','トーク'];
+ const skill=audience.length?audience.reduce((t,x)=>t+fields.reduce((a,k)=>a+clamp(popularitySkillPoints(x,k)),0)/fields.length,0)/audience.length:0;
+ return Math.max(0,Math.min(1,fame*.25+gp*.25+mp*.25+skill*.25));
+}
+
 /* IDOL ROAD music television integration; append after existing game scripts. */
 (()=>{
 'use strict';
@@ -3313,10 +3326,20 @@ function onLeavingDay(){for(const r of records()){
  if(r.status==='accepted'&&(r.recordDate||r.kind==='live')&&(r.recordDate||r.broadcastDate)===today()){r.status='missed';syncSchedule(r);addMail('inbox',`【収録・出演欠席のご連絡】${r.name}`,`${state.agency} ご担当者様\n\n本日予定しておりました${r.name}へのご出演が確認できませんでした。今回の放送予定はキャンセルとさせていただきます。\n\n${r.station} 制作担当`,r.station,{musicTVId:r.id});notice(`${r.name}は未実行のため欠席扱いとなりました。`);}
  if(r.status==='recorded'&&r.broadcastDate===today())applyBroadcast(r);if(r.status==='accepted'&&!r.recordDate&&r.kind==='feature'&&r.broadcastDate===today()){r.status='recorded';applyBroadcast(r);}
  }save();}
+
 function generate(){if(!state.agency||!groups().length)return;const now=today();if(state.musicTVOfferCheck===now)return;state.musicTVOfferCheck=now;if(dateObj().getDate()!==1){save();return;}for(const g of groups()){
  const recentSongBuzz=window.IDOL_RECENT_BUZZ.song(g,now);const possible=CATALOG.filter(x=>fame(g)>=x.min*(1-Math.min(.18,recentSongBuzz*.045))&&(!x.month||x.month===state.month)&&songs(g).length);
- if(!possible.length)continue;if(records().some(r=>String(r.groupId)===String(g.id)&&['offered','accepted','recorded'].includes(r.status)))continue;
- if(Math.random()>Math.min(.75,.45+recentSongBuzz*.075))continue;if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now))continue;const show=possible[Math.floor(Math.random()*possible.length)];invite(g,show);
+ if(!possible.length)continue;const active=records().filter(r=>String(r.groupId)===String(g.id)&&['offered','accepted','recorded'].includes(r.status)).length;
+ const strength=IR_INVITATION_DEMAND(g,null,'music');
+ const shots=strength>=.94?12:strength>=.80?7:strength>=.55?4:strength>=.30?2:1;
+ const cap=shots;
+ for(let attempt=0;attempt<shots&&active+attempt<cap;attempt++){
+   if(Math.random()>Math.min(.995,(.19+strength*.81+recentSongBuzz*.025)))continue;
+   if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now))continue;
+   const used=new Set(records().filter(r=>String(r.groupId)===String(g.id)&&r.received?.slice(0,7)===now.slice(0,7)).map(r=>r.name));
+   const choices=possible.filter(c=>!used.has(c.name));if(!choices.length)break;
+   invite(g,choices[Math.floor(Math.random()*choices.length)]);
+ }
  }save();}
 const oldAddDay=addDay;addDay=function(){onLeavingDay();oldAddDay();onEnteringDay();generate();};
 function onEnteringDay(){for(const r of records()){if(r.status==='recorded'&&r.broadcastDate===today())applyBroadcast(r);if(r.status==='accepted'&&!r.recordDate&&r.kind==='feature'&&r.broadcastDate===today()){r.status='recorded';applyBroadcast(r);}}save();}
@@ -3402,12 +3425,19 @@ function generate(){
   }
   const filtered=options.filter(o=>!records().some(r=>r.name===o.show.name&&['offered','accepted','recorded','broadcasted'].includes(r.status)&&r.received>=plus(key,-90)));
   if(!filtered.length)continue;
-  const peak=Math.max(0,...filtered.map(o=>o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key)));
-  if(Math.random()>=Math.min(.72,monthlyOdds[tier]*(1+Math.min(.45,peak*.115))))continue;
-  const weighted=filtered.map(o=>({o,w:1+(o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key))*.22}));
-  let draw=Math.random()*weighted.reduce((a,v)=>a+v.w,0);const x=(weighted.find(v=>(draw-=v.w)<=0)||weighted[weighted.length-1]).o;
-  if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,key))continue;
-  invite(x.g,x.show,x.m);
+  const strength=Math.max(0,Math.min(1,Math.max(...filtered.map(o=>IR_INVITATION_DEMAND(o.g,o.m,'variety')))));
+  const draws=strength>=.94?10:strength>=.8?6:strength>=.55?4:strength>=.3?2:1;
+  const limit=strength>=.94?Math.max(cap,10):strength>=.8?Math.max(cap,6):Math.min(cap,draws);
+  for(let trial=0;trial<draws&&records().filter(r=>r.tier===tier&&r.received?.slice(0,7)===month).length<limit;trial++){
+   const unused=filtered.filter(o=>!records().some(r=>r.name===o.show.name&&r.received?.slice(0,7)===month));
+   if(!unused.length)break;
+   const peak=Math.max(0,...unused.map(o=>o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key)));
+   if(Math.random()>=Math.min(.995,(monthlyOdds[tier]+strength*({net:.62,late:.75,prime:.90,special:.92}[tier]))*(1+Math.min(.25,peak*.06))))continue;
+   const weighted=unused.map(o=>({o,w:1+Math.max(0,score(o.g,o.m))/8000*2+(o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key))*.22}));
+   let draw=Math.random()*weighted.reduce((a,v)=>a+v.w,0);const x=(weighted.find(v=>(draw-=v.w)<=0)||weighted[weighted.length-1]).o;
+   if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,key))continue;
+   invite(x.g,x.show,x.m);
+  }
  }
  save();
 }
@@ -3458,7 +3488,18 @@ function shoot(w){const s=w.slots.find(x=>x.date===date());if(w.status!=='accept
 function effects(w){if(w.status!=='completed')return;const due=w.type==='film'?1:w.episodes;const aired=Array.from({length:due},(_,i)=>add(w.release,w.type==='film'?0:i*7)).filter(d=>d<=date()).length;while(w.effects<aired){const t=TYPES[w.type],m=actor(w),g=(state.groups||[]).find(x=>String(x.id)===String(w.groupId));if(!m||!g)break;const factor=w.lead?1.5:1;const f=Math.round(rand(...t.fame)*factor/due),p=Math.round(rand(...t.pop)*factor/due);g.fame=typeof idolFameAdd==='function'?idolFameAdd(Number(g.fame)||0,f):Math.min(100000,(Number(g.fame)||0)+f);m.popularityBuzzXp=Math.min(8000,(Number(m.popularityBuzzXp)||0)+p);m.dramaFilmPopularityBoost=(Number(m.dramaFilmPopularityBoost)||0)+p;w.fameGained=(w.fameGained||0)+f;w.popGained=(w.popGained||0)+p;w.effects++} }
 function leave(){for(const w of all()){if(w.status==='offered'&&date()>=w.deadline)w.status='expired';if(w.status==='accepted'){const s=w.slots.find(x=>x.date===date());if(s&&!s.done){w.absences++;if(w.absences===1){mailItems().push({id:id(),folder:'inbox',subject:`【撮影欠席に関するご連絡】『${w.title}』`,body:`${state.agency} ご担当者様\n\n${w.sender} 制作担当です。\n本日の撮影にご参加いただけなかったため、警告のご連絡を差し上げます。次回欠席の場合は降板となります。\n\n${w.sender}`,date:date(),from:w.sender,read:false});notice(`『${w.title}』の撮影を欠席しました（1回目）。`)}else{w.status='withdrawn';state.schedule=(state.schedule||[]).filter(x=>x.dramaFilmId!==w.id||x.date<=date());notice(`『${w.title}』を2回欠席したため降板しました。`)}}}}save()}
 function enter(){for(const w of all())effects(w);generate();save()}
-function generate(){if(!state.agency||!(state.groups||[]).length)return;const month=date().slice(0,7);if(state.dramaFilmCheckedMonth===month)return;state.dramaFilmCheckedMonth=month;let count=0;for(const type of Object.keys(TYPES)){if(count>=3)break;const candidates=[];for(const g of state.groups)for(const m of g.members||[])for(const lead of [false,true])if(score(m)>=TYPES[type].min[lead?1:0])candidates.push({g,m,lead});if(!candidates.length)continue;const x=pick(candidates);if(Math.random()<TYPES[type].odds[x.lead?1:0]&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,date()))&&produce(x.g,x.m,type,x.lead))count++}save()}
+function generate(){if(!state.agency||!(state.groups||[]).length)return;const month=date().slice(0,7);if(state.dramaFilmCheckedMonth===month)return;state.dramaFilmCheckedMonth=month;let count=0;for(const type of Object.keys(TYPES)){if(count>=20)break;const candidates=[];for(const g of state.groups)for(const m of g.members||[])for(const lead of [false,true])if(score(m)>=TYPES[type].min[lead?1:0])candidates.push({g,m,lead});if(!candidates.length)continue;
+ const strength=Math.max(0,Math.min(1,Math.max(...candidates.map(x=>IR_INVITATION_DEMAND(x.g,x.m,'drama')))));
+ const draws=strength>=.94?8:strength>=.8?5:strength>=.55?3:strength>=.3?2:1;
+ for(let trial=0;trial<draws&&count<20;trial++){
+  const weighted=candidates.map(x=>({x,w:1+Math.max(0,score(x.m)-TYPES[type].min[x.lead?1:0])/2000}));
+  let roll=Math.random()*weighted.reduce((sum,v)=>sum+v.w,0);const x=(weighted.find(v=>(roll-=v.w)<=0)||weighted[weighted.length-1]).x;
+  const eligibility=Math.max(0,Math.min(1,(score(x.m)-TYPES[type].min[x.lead?1:0])/Math.max(1,8000-TYPES[type].min[x.lead?1:0])));
+  const demand=IR_INVITATION_DEMAND(x.g,x.m,'drama');
+  const chance=Math.min(.995,TYPES[type].odds[x.lead?1:0]+eligibility*.15+demand*({short:.66,late:.78,prime:.88,film:.90}[type]));
+  if(Math.random()<chance&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,date()))&&produce(x.g,x.m,type,x.lead))count++;
+ }
+ }save()}
 const prevAdd=addDay;addDay=function(){leave();prevAdd();enter()};
 const prevRender=render;render=function(){prevRender();if(state.tab==='活動'&&state.sub==='ドラマ・映画')draw()};
 const prevMail=showMailbox;showMailbox=function(){prevMail();if(!mailSelected)return;const item=mailItems().find(x=>x.id===mailSelected);if(!item?.dramaFilmId||item.folder!=='inbox')return;const w=all().find(x=>x.id===item.dramaFilmId),root=el('drawerBody')?.querySelector('.maildetail');if(!w||!root)return;const info=document.createElement('p');info.textContent=`回答期限：${w.deadline} ／ 状態：${w.status}`;root.append(info);if(w.status==='offered'&&date()<=w.deadline){const row=document.createElement('div');row.className='line';for(const [label,yes] of [['承諾する',true],['辞退する',false]]){const b=document.createElement('button');b.textContent=label;if(yes)b.className='primary';b.onclick=()=>{if(respond(w,yes)){info.textContent=`状態：${w.status}`;row.remove()}};row.append(b)}root.append(row)}};
