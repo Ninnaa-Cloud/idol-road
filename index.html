@@ -1687,7 +1687,28 @@ function extPlanMonth(){
  state.externalInvites??=[];state.externalPlans??={};
  const month=String(state.year)+'-'+pad(state.month);
  for(const g of state.groups||[]){
-  const key=month+'_'+g.id;if(state.externalPlans[key])continue;
+  const key=month+'_'+g.id;
+  const existingPlan=state.externalPlans[key];
+  if(existingPlan){
+   // One-time recovery of earlier, low-volume monthly plans after the invite-rate upgrade.
+   // Keep existing day indices unchanged because sent[] stores those indices.
+   if(!existingPlan._irExpandedV156){
+    existingPlan._irExpandedV156=true;
+    const rank=Math.max(0,GRADE_ORDER.indexOf(groupPopularityDetails(g).grade));
+    const minCount=EXT_RANGES[rank][0];
+    const lastDay=new Date(state.year,state.month,0).getDate();
+    const existingDays=new Set((existingPlan.days||[]).map(Number));
+    const available=[];
+    for(let d=Math.max(1,Number(state.day)||1);d<=lastDay;d++)if(!existingDays.has(d))available.push(d);
+    const need=Math.min(available.length,Math.max(0,minCount-(existingPlan.days||[]).length));
+    for(let i=0;i<need;i++){
+     const pos=Math.min(available.length-1,Math.floor((i+.5)*available.length/need));
+     const chosen=available[pos];
+     if(!existingDays.has(chosen)){existingPlan.days.push(chosen);existingDays.add(chosen);}
+    }
+   }
+   continue;
+  }
   const rank=Math.max(0,GRADE_ORDER.indexOf(groupPopularityDetails(g).grade));
   const [min,max]=EXT_RANGES[rank];const count=extRand(min,max);
   const days=new Date(state.year,state.month,0).getDate();
@@ -1729,7 +1750,21 @@ function extProcess(){
   if(p.month!==month)continue;
   for(let i=0;i<p.days.length;i++){
    if(p.sent.includes(i)||p.days[i]>state.day)continue;
-   p.sent.push(i);const g=(state.groups||[]).find(g=>String(g.id)===String(p.groupId));if(g&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now)))extCreateInvitation(g);
+   const g=(state.groups||[]).find(g=>String(g.id)===String(p.groupId));
+   if(!g){p.sent.push(i);continue;}
+   if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now)){
+    // A temporarily blocked invitation must not silently consume a planned mail.
+    // Move it to a free future day, or retry the next game day if the month is ending.
+    const daysInMonth=new Date(state.year,state.month,0).getDate();
+    const used=new Set(p.days.map(Number));let next=Number(state.day)+1;
+    while(next<=daysInMonth&&used.has(next))next++;
+    if(next<=daysInMonth){p.days[i]=next;continue;}
+    if(Number(state.day)<daysInMonth){p.days[i]=Number(state.day)+1;continue;}
+    // On the final days, the skipped invitation is simply not issued.
+    p.sent.push(i);continue;
+   }
+   extCreateInvitation(g);
+   p.sent.push(i);
   }
  }
  for(const inv of state.externalInvites||[]){if(inv.status==='pending'&&now>inv.deadline)inv.status='expired'}
