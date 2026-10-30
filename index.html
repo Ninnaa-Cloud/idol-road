@@ -1154,6 +1154,10 @@ function renderLiveHost(){
   const live={id:'live_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),groupId:group.id,groupName:group.name,type,name,dates,time,
    pref:tour?'':q('lhPref').value,venue,capacity,stops,
    merch:type==='one'&&q('lhMerch').value==='yes',benefit:isRegular()?true:benefit,mode:type==='joint'?'single':q('lhMode').value,regularWeekday:isRegular()?Number(q('lhRegularWeek').value):null,regularActive:isRegular(),createdAt:today()};
+  const requestedSlots=(tour?stops.map(x=>({date:x.date,time:x.time})):dates.map(d=>({date:d,time})));
+  if(isRegular()&&requestedSlots.length){const cursor=new Date(requestedSlots[0].date+'T12:00:00');for(let k=1;k<12;k++){cursor.setDate(cursor.getDate()+7);requestedSlots.push({date:dateKey(cursor),time});}}
+  const requestedClashes=requestedSlots.flatMap(x=>IDOL_BOOKING.conflict({id:'live:inquiry:new',date:x.date,start:IDOL_BOOKING.hour(x.time),end:IDOL_BOOKING.hour(x.time)+(benefit?3:2),groupId:String(group.id),memberId:null}));
+  if(!IDOL_BOOKING.warn(requestedClashes))return;
   if(!confirm(`${name}について会場へ利用可否を問い合わせますか？（ゲーム内メール）`))return;
   live.attendanceForecasts=dates.map((date,i)=>{
    const st=stops?.[i];const cap=st?.capacity||live.capacity;
@@ -1753,8 +1757,8 @@ function extReply(id,accept){
  if(inv.status!=='pending'||today()>inv.deadline){alert('この出演依頼は回答期限切れ、または回答済みです。');return}
  if(accept){
   const groupForAge=(state.groups||[]).find(g=>String(g.id)===String(inv.groupId));const startHour=parseInt(String(inv.time||'18:00'),10);const endHour=startHour+Math.max(1,Number(inv.duration)||3);if(groupForAge&&!irAgeConfirm(groupForAge,inv.date,startHour,endHour))return;inv.ageExcludedIds=(groupForAge?.members||[]).filter(m=>irAgeRestricted(m,inv.date,startHour,endHour)).map(m=>String(m.id));
-  const conflicts=(state.schedule||[]).filter(x=>x.date===inv.date&&!/レッスン|休息|休憩/.test([x.type,x.title,x.name].join(' ')));
-  if(conflicts.length&&!confirm(`【スケジュール重複警告】\n${inv.date}に他の予定があります。\n${conflicts.slice(0,6).map(x=>x.title||x.name||x.type||'予定').join('\n')}\n\n既存予定を残したまま承諾しますか？`))return;
+  const clashes=IDOL_BOOKING.conflict({id:'live:'+inv.id,date:inv.date,start:IDOL_BOOKING.hour(inv.time),end:IDOL_BOOKING.hour(inv.time)+Math.max(1,Number(inv.duration)||3),groupId:String(inv.groupId),memberId:null});
+  if(!IDOL_BOOKING.warn(clashes))return;
   inv.status='accepted';state.hostedLives??=[];
   state.hostedLives.push({id:inv.id,name:inv.event,type:'external',merch:false,benefit:true,externalInviteId:inv.id,ageExcludedIds:inv.ageExcludedIds||[],groupId:inv.groupId,groupName:inv.groupName,dates:[inv.date],time:inv.time,venue:inv.venue,pref:inv.pref,capacity:inv.capacity,stops:[{date:inv.date,time:inv.time,venue:inv.venue,pref:inv.pref,capacity:inv.capacity}],attendanceForecasts:[],popularityProcessedDates:[inv.date]});
   state.schedule??=[];state.schedule.push({date:inv.date,title:'外部対バン出演：'+inv.groupName+'／'+inv.event,name:'外部対バン出演：'+inv.groupName+'／'+inv.event,type:'ライブ',text:inv.groupName+'｜'+inv.time+' '+inv.venue+'｜特典会あり',liveId:inv.id,done:false});
@@ -3595,6 +3599,23 @@ check();
 const TYPES=['握手会','写真会'];
 const TONES={
 ENFP:['みんなに会えるの楽しみすぎるーー！！🥹💕','早くみんなとお話ししたい！テンション上がる！！✨','今日も最高の思い出つくろうね！！💖'],ENFJ:['みんなと素敵な時間を過ごせたらうれしいです💐','一人ひとりと会えるのを楽しみにしています🫶','みんなの笑顔に会えるのが何より楽しみ☺️'],ENTP:['何話すか作戦立ててきてね😎','今日も楽しい話を持ってきて！笑','面白い一日にしようじゃないか🔥'],ENTJ:['みんなに会える日を楽しみに準備してきました✨','一緒に充実した時間にしましょう🔥','当日を楽しみにしています。よろしくね！'],ESFP:['みんなーー！会えるよーー！🎉💕','楽しむ準備できてる？私はばっちり！🥳','いっぱい笑って最高の日にしよ！💖'],ESFJ:['会いに来てくれるみんな、ありがとう🫶','みんなとお話しできる時間が大好きです☺️','気をつけて来てね！待ってるよ💐'],ESTP:['当日は全力で楽しもう！🔥','直接会えるの最高じゃん！😎','来てくれるみんな、盛り上がろうね！'],ESTJ:['当日に向けて準備しています✨','みんなと会える機会を大切にしたいです','来てくださる方、よろしくお願いします！'],INFP:['みんなに会えると思うと今からどきどきする🥹','小さな思い出を一緒に増やせたらいいな🌷','直接気持ちを伝えられるのが楽しみです'],INFJ:['一人ひとりとの時間を大切にしたいです🌙','心に残る時間になりますように💐','会える日を静かに楽しみにしていました'],INTP:['何を話すかまだ決めてないけど楽しみです🎧','当日どんな話が出るのか気になる','緊張するけど会えるのは楽しみです'],INTJ:['皆さんと直接お会いできるのを楽しみにしています。','当日に向けて準備しています。','限られた時間ですが、大切に過ごしたいです。'],ISFP:['ちょっと緊張するけど楽しみ🫶','何話そうかなって考えてる☺️','みんなに会えるの、うれしいな🌸'],ISFJ:['いつも応援してくれてありがとう☺️','会いに来てくれるみんなを待ってます🫶','温かい時間にできたらうれしいです🌷'],ISTP:['当日よろしくね。楽しみにしてる🎸','会えるの楽しみ。気楽に来てね','今日は自分らしく楽しみます'],ISTJ:['皆さんとお会いできるのを楽しみにしています。','当日はどうぞよろしくお願いします。','一つひとつの出会いを大切にしたいです。']};
+const FINISH_TONES={
+ENFP:['直接会えて本当に幸せだったーー！🥹💕','みんなと話した余韻がまだすごい！！✨','今日の思い出、ずっと大切にするね💖'],
+ENFJ:['一人ひとりの言葉が心に残っています💐','みんなの笑顔にたくさん元気をもらいました🫶','今日会えたことに心から感謝しています☺️'],
+ENTP:['今日のトーク、面白すぎたね😎','予想外の話も飛び出して楽しかった！笑','みんなとの会話、まだ思い出して笑ってる🔥'],
+ENTJ:['今日いただいた言葉を次の活動につなげます✨','充実した一日になりました。ありがとう！🔥','みんなと直接話せて、改めて気合いが入りました！'],
+ESFP:['みんなーー！今日は最高だったよー！🎉💕','いっぱい笑って楽しすぎる一日だった🥳','会いに来てくれたみんな大好き！💖'],
+ESFJ:['今日もたくさんの笑顔をありがとう🫶','直接お話しできてうれしかったです☺️','みんながくれた優しさを忘れません💐'],
+ESTP:['今日めっちゃ楽しかった！ありがとう🔥','会いに来てくれたみんな最高だった😎','今日の思い出、いい感じに残ったね！'],
+ESTJ:['本日はお越しいただきありがとうございました✨','皆さんと直接お会いできてうれしかったです','今日いただいた応援を次に生かします！'],
+INFP:['今日の温かい言葉がずっと心に残ってる🥹','小さな会話の一つひとつが宝物です🌷','会えて本当にうれしかった。ありがとう'],
+INFJ:['一人ひとりと過ごした時間が心に残っています🌙','今日いただいた気持ちを大切にしたいです💐','温かい時間を一緒につくってくれてありがとう'],
+INTP:['今日の会話、あとからいろいろ思い返してる🎧','思いがけない話も聞けて楽しかったです','直接お話しできてよかった。ありがとう'],
+INTJ:['本日は貴重な時間をありがとうございました。','皆さんと直接お話しできてよかったです。','今日の言葉を大切に受け止めています。'],
+ISFP:['今日の思い出でしばらく幸せな気分🫶','みんなの笑顔が忘れられない☺️','会えてうれしかったよ。ありがとう🌸'],
+ISFJ:['今日は来てくれて本当にありがとう☺️','みんなと過ごせて温かい一日でした🫶','一人ひとりとの思い出を大切にします🌷'],
+ISTP:['今日はありがとう。楽しかった🎸','みんなと話せていい一日だった','今日のこと、けっこう余韻残ってる'],
+ISTJ:['本日はお越しいただきありがとうございました。','皆さんとお話しできてうれしかったです。','いただいた言葉を励みに、これからも頑張ります。']};
 const LINES={
 apply:['今回何部申し込もうかな','申し込み完了！当たりますように','倍率高そうだけど応募した','連番相手と申し込んだ！','応募忘れないようにメモした','推しの枠どうか当たって','申込締切チェックしなきゃ','当落までそわそわする','遠征するか迷ってる','初めて応募してみた'],
 result:['当選した！会えるのうれしい','落選した…次こそは','当落出た！無事当たった','友達と連番できそう','今回は外れちゃった😭','当たった人おめでとう','推しの部当選して泣いてる','当落で情緒が忙しい'],
@@ -3614,7 +3635,7 @@ function memberPost(m,g,body){return add('member:'+m.id,name(m),m.xHandle||idolX
 function dayText(e){const d=new Date(e.date+'T12:00:00');return Number.isNaN(+d)?e.date:`${d.getMonth()+1}月${d.getDate()}日（${'日月火水木金土'[d.getDay()]}）`;}
 function venueText(e){return window.irHandshakeVenueName?.(e.venueId)||'会場はイベント詳細をご確認ください';}
 function members(e,g,phase){const source=(g.members||[]).filter(m=>(e.people||[]).some(p=>String(p.id)===String(m.id)&&!p.left));if(phase==='finish')return source.filter(m=>(e.dayParticipantIds||[]).map(String).includes(String(m.id)));const active=source.filter(m=>!m.left&&m.activityStatus!=='活動休止'&&!m.idolRoadResumePending);if(phase==='day')return active.filter(m=>!(e.ageExcludedIds||[]).map(String).includes(String(m.id))&&(!window.IDOL_BOOKING?.participates||window.IDOL_BOOKING.participates(m,e.groupId,e.date,10,18,'event:'+e.id)));return active;}
-function varied(m,e,phase){const mb=String(m.mbti||m.MBTI||'ISFP').toUpperCase(),tones=TONES[mb]||TONES.ISFP;const k=e.id+':'+m.id+':'+phase,old=db().recent[k]||-1;let ix=Math.floor(Math.random()*tones.length);if(ix===old)ix=(ix+1)%tones.length;db().recent[k]=ix;const t=tones[ix],isPhoto=e.type==='写真会';if(phase==='announce')return `${e.type}のチケット抽選受付が始まりました！${isPhoto?'一緒に写真を撮れる日が楽しみ📸':'直接お話しできる日が楽しみ🫶'}\n${t}`;if(phase==='day')return `今日は${e.type}です！${isPhoto?'一緒に素敵な写真を残そうね📸':'たくさんお話しできたらうれしいな💌'}\n${t}`;return `${e.type}ありがとうございました！${isPhoto?'一緒に写真を撮れて素敵な思い出になりました📸':'直接お話しできて本当にうれしかったです🫶'}\n${t}\nまた会おうね！`;}
+function varied(m,e,phase){const mb=String(m.mbti||m.MBTI||'ISFP').toUpperCase(),tones=(phase==='finish'?FINISH_TONES[mb]||FINISH_TONES.ISFP:TONES[mb]||TONES.ISFP);const k=e.id+':'+m.id+':'+phase,old=db().recent[k]||-1;let ix=Math.floor(Math.random()*tones.length);if(ix===old)ix=(ix+1)%tones.length;db().recent[k]=ix;const t=tones[ix],isPhoto=e.type==='写真会';if(phase==='announce')return `${e.type}のチケット抽選受付が始まりました！${isPhoto?'一緒に写真を撮れる日が楽しみ📸':'直接お話しできる日が楽しみ🫶'}\n${t}`;if(phase==='day')return `今日は${e.type}です！${isPhoto?'一緒に素敵な写真を残そうね📸':'たくさんお話しできたらうれしいな💌'}\n${t}`;return `${e.type}ありがとうございました！${isPhoto?'一緒に写真を撮れて素敵な思い出になりました📸':'直接お話しできて本当にうれしかったです🫶'}\n${t}\nまた会おうね！`;}
 function fan(g,e){const d=db(),pool=d.fans[g.id]??=[];if(!pool.length||Math.random()<.12){const i=d.serial++,names=['みさき','もち','ぴの','限界オタク','はる','ねむ','あや','すず','現場大好き','りん','うさ','こはる','なつ','ゆう','おもち','らむね','今日も仕事','しろ'];pool.push({id:'hx_'+g.id+'_'+i,name:names[i%names.length]+(i>=names.length?Math.floor(i/names.length)+1:''),handle:'@eventfan_'+g.id+'_'+i,oshimen:(g.members||[])[i%Math.max(1,g.members.length)]?.id});}return pick(pool);}
 function reactions(e,g,phase,original){const base=phase==='announce'?LINES.apply:phase==='result'?LINES.result:phase==='day'?LINES.day:LINES.finish;const extra=phase==='day'?(e.type==='写真会'?LINES.photoDay:LINES.shakeDay):phase==='finish'?(e.type==='写真会'?LINES.photoFinish:LINES.shakeFinish):[];const lines=[...base,...extra];const fame=Math.max(0,Number(g.fame||g.fameValue||g.recognition||0));const followers=Number(state.idolXFollowers?.groups?.[g.id]||0);const count=irXReactionScale(g);const used=new Set();for(let i=0;i<count;i++){const f=fan(g,e);let options=lines.filter(l=>!used.has(l));if(!options.length){used.clear();options=lines;}const line=pick(options);used.add(line);const suffix=Math.random()<.5?' '+tag(g):'';const p=add('fan:'+f.id,f.name,f.handle,line+suffix);p.handshakeEventId=e.id;p.handshakePhase=phase;if(original){if(i<10)p.quoteOf=original.id;else p.replyTo=original.id;}}if(original){original.comments=Math.max(original.comments||0,Math.min(20,count));original.quotes=Math.max(original.quotes||0,Math.min(10,count));original.likes=Math.max(original.likes||0,count*4);original.reposts=Math.max(original.reposts||0,Math.round(count*1.5));}}
 function announce(e,g){const isPhoto=e.type==='写真会',icon=isPhoto?'📸':'💌';const body=`${icon} ${e.type} 開催決定 ${icon}\n\n${e.type}のチケット抽選受付がスタートしました！🎉\n\n📅 ${dayText(e)}\n📍 ${venueText(e)}\n\n${isPhoto?'メンバーと一緒に思い出を残せる特別な機会です🫶':'メンバーと直接会える特別な機会です🫶'}\n皆さまのご参加をお待ちしております✨\n\n${tag(g)}`;const p=add('group:'+g.id,g.name,idolXHandleGroup(g),body);add('agency',(state.agency||'事務所')+' 公式','@'+(idolXRomanPart(state.agencyReading||state.agency)||'agency')+'_official','',p.id);for(const m of members(e,g,'announce'))memberPost(m,g,varied(m,e,'announce'));reactions(e,g,'announce',p);}
@@ -5628,6 +5649,46 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  window.IDOL_ROAD_SNS_FIRE={tick,respond};
  // Do not generate a surprise controversy merely by loading an existing saved game.
  if(!records().checkedDay)records().checkedDay=day();
+})();
+</script>
+
+<script>
+/* v154: consolidate booking conflicts across hosted, invited and individual appointments. */
+(function(){
+ const book=window.IDOL_BOOKING;if(!book)return;
+ book.hour=function(x){if(typeof x==='number')return x;const m=String(x??'').match(/^(\d{1,2})(?::(\d{2}))?/);return m?Number(m[1])+Number(m[2]||0)/60:0;};
+ book.list=function(){
+  const out=[],seen=new Set();
+  const add=(id,date,start,end,gid,mid,title,kind)=>{
+   if(!date||!gid)return;start=this.hour(start);end=this.hour(end);if(!(end>start))end=start+2;
+   const unique=[id,date].join('|');if(seen.has(unique))return;seen.add(unique);
+   out.push({id:String(id),date:String(date).slice(0,10),start,end,groupId:String(gid),memberId:mid==null?null:String(mid),title:String(title||'予定'),kind});
+  };
+  const slot=x=>{const m=String(x||'').match(/(\d{1,2}):(\d{2})\s*[-〜～]\s*(\d{1,2}):(\d{2})/);return m?[+m[1]+ +m[2]/60,+m[3]+ +m[4]/60]:[0,24]};
+  for(const l of state.hostedLives||[]){if(['cancelled','canceled','rejected','declined'].includes(l.status))continue;
+   (l.dates||[l.date]).forEach((d,i)=>{if(!d)return;const st=l.stops?.[i],tm=st?.time||l.time||'12:00',start=this.hour(tm);
+    const dur=l.type==='external'?Math.max(2,Number(l.duration)||3):l.benefit?3:2;
+    add('live:'+l.id+':'+d,d,start,start+dur,l.groupId,null,l.name||l.event||'ライブ','live');});
+  }
+  // External invitation may be accepted before the hosted live is written by legacy save data.
+  for(const x of state.externalInvites||[]){if(x.status!=='accepted')continue;
+   if((state.hostedLives||[]).some(l=>l.externalInviteId===x.id||l.id===x.id))continue;
+   const start=this.hour(x.time);add('external:'+x.id,x.date,start,start+Math.max(2,Number(x.duration)||3),x.groupId,null,x.event,'external');}
+  for(const r of state.musicTV||[]){if(r.status!=='accepted'||r.kind==='feature')continue;const d=r.recordDate||r.broadcastDate;const [a,b]=slot(r.slot);add('music:'+r.id,d,a,b,r.groupId,null,r.name,'music');}
+  for(const r of state.varietyTV||[]){if(r.status!=='accepted')continue;const [a,b]=slot(r.slot);add('variety:'+r.id,r.recordDate||r.broadcastDate,a,b,r.groupId,r.mode==='solo'?r.memberId:null,r.name,'variety');}
+  for(const w of state.dramaFilmWorks||[]){if(!['accepted','shooting'].includes(w.status))continue;for(const x of w.slots||[])if(!x.done)add('drama:'+w.id+':'+x.date,x.date,x.start,x.end,w.groupId,w.memberId,w.title||w.name||'ドラマ・映画撮影','drama');}
+  for(const r of state.birthdayEvents||[]){if(r.status!=='booked')continue;add('birthday:'+r.id,r.date,r.start??10,(Number(r.start??10)+3),r.groupId,null,(r.memberName||'メンバー')+' 生誕祭','birthday');}
+  for(const r of state.handshakeEvents||[]){if(r.status!=='booked')continue;add('event:'+r.id,r.date,10,18,r.groupId,null,r.type||'握手会・写真会','event');}
+  return out;
+ };
+ book.conflict=function(c){const st=this.hour(c.start??0),en=this.hour(c.end??24),gid=String(c.groupId),mid=c.memberId==null?null:String(c.memberId);
+  return this.list().filter(x=>x.id!==String(c.id)&&x.date===String(c.date).slice(0,10)&&x.groupId===gid&&x.start<en&&st<x.end&&(mid===null||x.memberId===null||x.memberId===mid));
+ };
+ book.warn=function(items){if(!items?.length)return true;
+  const unique=[...new Map(items.map(x=>[x.id+'|'+x.date,x])).values()];
+  const lines=unique.slice(0,12).map(x=>{const g=(state.groups||[]).find(g=>String(g.id)===x.groupId);const person=x.memberId==null?'グループ全体':(g?.members||[]).find(m=>String(m.id)===x.memberId);const name=typeof person==='string'?person:(person?.stageName||person?.name||person?.nickname||'個人メンバー');const hm=n=>String(Math.floor(n)).padStart(2,'0')+':'+String(Math.round(n%1*60)).padStart(2,'0');return `・${x.date} ${hm(x.start)}〜${hm(x.end)}　${x.title}（${name}）`;});
+  return confirm('【スケジュール重複警告】\n以下の予定と時間帯が重なっています。\n'+lines.join('\n')+(unique.length>12?'\nほか'+(unique.length-12)+'件':'')+'\n\n既存の予定は自動で取り消されません。\n重複したまま続行しますか？');
+ };
 })();
 </script>
 </body></html>
