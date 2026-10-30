@@ -3224,15 +3224,20 @@ window.IDOL_BOOKING={
 
 /* Shared invitation demand: group recognition, group popularity, member popularity and field-specific SS-level skills. */
 function IR_INVITATION_DEMAND(g,m,field){
- const clamp=v=>Math.max(0,Math.min(1,(Number(v)||0)/8000));
- const fame=clamp(g?.fame??g?.recognition??g?.awareness??g?.nameRecognition??0);
- const gp=clamp(groupPopularityPoints(g).total);
+ const norm=(v,max)=>Math.max(0,Math.min(1,(Number(v)||0)/max));
+ // Recognition uses the actual 100,000 fame cap; popularity and abilities use the 8,000-point scale.
+ const fame=norm(g?.fame??g?.recognition??g?.awareness??g?.nameRecognition??0,100000);
+ const groupPop=norm(groupPopularityPoints(g).total,8000);
  const members=(g?.members||[]).filter(x=>!x.idolRoadDismissed);
  const audience=m?[m]:members;
- const mp=audience.length?audience.reduce((t,x)=>t+clamp(popularityPoints(x)),0)/audience.length:0;
+ const memberPop=audience.length?audience.reduce((t,x)=>t+norm(popularityPoints(x),8000),0)/audience.length:0;
  const fields=field==='music'?['歌','ダンス']:field==='variety'?['トーク','ファン対応','SNS']:['演技','トーク'];
- const skill=audience.length?audience.reduce((t,x)=>t+fields.reduce((a,k)=>a+clamp(popularitySkillPoints(x,k)),0)/fields.length,0)/audience.length:0;
- return Math.max(0,Math.min(1,fame*.25+gp*.25+mp*.25+skill*.25));
+ const skill=audience.length?audience.reduce((t,x)=>t+fields.reduce((a,k)=>a+norm(popularitySkillPoints(x,k),8000),0)/fields.length,0)/audience.length:0;
+ // Popularity and recognition drive offers; talent supports selection but cannot make a newcomer a star.
+ const publicReach=fame*.5+groupPop*.5;
+ const quality=memberPop*.65+skill*.35;
+ const combined=fame*.35+groupPop*.35+memberPop*.20+skill*.10;
+ return Math.max(0,Math.min(1,combined*(.30+.70*publicReach)*(.82+.18*quality)));
 }
 
 /* IDOL ROAD music television integration; append after existing game scripts. */
@@ -3331,10 +3336,10 @@ function generate(){if(!state.agency||!groups().length)return;const now=today();
  const recentSongBuzz=window.IDOL_RECENT_BUZZ.song(g,now);const possible=CATALOG.filter(x=>fame(g)>=x.min*(1-Math.min(.18,recentSongBuzz*.045))&&(!x.month||x.month===state.month)&&songs(g).length);
  if(!possible.length)continue;const active=records().filter(r=>String(r.groupId)===String(g.id)&&['offered','accepted','recorded'].includes(r.status)).length;
  const strength=IR_INVITATION_DEMAND(g,null,'music');
- const shots=strength>=.94?12:strength>=.80?7:strength>=.55?4:strength>=.30?2:1;
+ const shots=strength>=.85?7:strength>=.65?5:strength>=.42?3:strength>=.22?2:1;
  const cap=shots;
  for(let attempt=0;attempt<shots&&active+attempt<cap;attempt++){
-   if(Math.random()>Math.min(.995,(.19+strength*.81+recentSongBuzz*.025)))continue;
+   if(Math.random()>Math.min(.94,(.055+strength*.83+recentSongBuzz*.015)))continue;
    if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now))continue;
    const used=new Set(records().filter(r=>String(r.groupId)===String(g.id)&&r.received?.slice(0,7)===now.slice(0,7)).map(r=>r.name));
    const choices=possible.filter(c=>!used.has(c.name));if(!choices.length)break;
@@ -3426,13 +3431,13 @@ function generate(){
   const filtered=options.filter(o=>!records().some(r=>r.name===o.show.name&&['offered','accepted','recorded','broadcasted'].includes(r.status)&&r.received>=plus(key,-90)));
   if(!filtered.length)continue;
   const strength=Math.max(0,Math.min(1,Math.max(...filtered.map(o=>IR_INVITATION_DEMAND(o.g,o.m,'variety')))));
-  const draws=strength>=.94?10:strength>=.8?6:strength>=.55?4:strength>=.3?2:1;
-  const limit=strength>=.94?Math.max(cap,10):strength>=.8?Math.max(cap,6):Math.min(cap,draws);
+  const draws=strength>=.85?7:strength>=.65?5:strength>=.42?3:strength>=.22?2:1;
+  const limit=strength>=.85?Math.max(cap,7):strength>=.65?Math.max(cap,5):Math.min(cap,draws);
   for(let trial=0;trial<draws&&records().filter(r=>r.tier===tier&&r.received?.slice(0,7)===month).length<limit;trial++){
    const unused=filtered.filter(o=>!records().some(r=>r.name===o.show.name&&r.received?.slice(0,7)===month));
    if(!unused.length)break;
    const peak=Math.max(0,...unused.map(o=>o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key)));
-   if(Math.random()>=Math.min(.995,(monthlyOdds[tier]+strength*({net:.62,late:.75,prime:.90,special:.92}[tier]))*(1+Math.min(.25,peak*.06))))continue;
+   if(Math.random()>=Math.min(.93,(monthlyOdds[tier]+strength*({net:.43,late:.51,prime:.60,special:.62}[tier]))*(1+Math.min(.15,peak*.04))))continue;
    const weighted=unused.map(o=>({o,w:1+Math.max(0,score(o.g,o.m))/8000*2+(o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key))*.22}));
    let draw=Math.random()*weighted.reduce((a,v)=>a+v.w,0);const x=(weighted.find(v=>(draw-=v.w)<=0)||weighted[weighted.length-1]).o;
    if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,key))continue;
@@ -3472,11 +3477,23 @@ const id=()=>`drama-film-${Date.now()}-${Math.random().toString(36).slice(2,11)}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function title(kind){const pool=used()[kind]||[];for(let i=0;i<150;i++){const t=pick(A)+pick(B)+pick(C);if(!pool.includes(t)){pool.push(t);used()[kind]=pool;return t}}return null}
 function score(m){const v=typeof popularitySkillPoints==='function'?popularitySkillPoints(m,'演技'):(m.extraSkills?.['演技']??m.skills?.acting??m.acting);const order=['F','E','D','C','B','A','S','SS'];const val=x=>{if(typeof x==='number')return Math.max(0,Math.min(8000,x));if(x&&typeof x==='object')return val(x.xpTotal??x.totalXP??x.score??x.grade??x.rank);const k=order.indexOf(String(x||'F').toUpperCase());return Math.max(0,k)/7*8000};return .9*val(v)+.1*(typeof popularityPoints==='function'?popularityPoints(m):val(m.popularity??m.popularityScore??m.popularityGrade??0))}
+/* Invitations require visibility and audience fit, not acting skill alone. */
+function dramaAudienceEligible(g,m,type,lead){
+ const f=Math.max(0,Number(g?.fame)||0);
+ const gp=groupPopularityPoints(g).total;
+ const mp=popularityPoints(m);
+ const floor={
+  short:[0,0,0],late:[2500,1600,900],
+  prime:[18000,5300,3500],film:[25000,5800,4000]
+ }[type]||[0,0,0];
+ const factor=lead?1.16:1;
+ return f>=floor[0]*factor&&gp>=floor[1]*factor&&mp>=floor[2]*factor;
+}
 function ageOn(m,day){const birth=m.birthDate||m.birth||m.birthday;if(!birth)return null;const b=new Date(String(birth).slice(0,10)+'T12:00:00'),d=new Date(day+'T12:00:00');if(isNaN(+b))return null;return d.getFullYear()-b.getFullYear()-(d.getMonth()<b.getMonth()||(d.getMonth()===b.getMonth()&&d.getDate()<b.getDate())?1:0)}
 function scheduleDates(type,start){const t=TYPES[type],days=[];if(type==='short'){for(let i=0;i<4;i++)days.push(add(start,i))}else{const weekdays=[0,1,2,3,4,5,6].sort(()=>Math.random()-.5).slice(0,t.perWeek).sort();for(let w=0;w<t.weeks;w++)for(const wd of weekdays)days.push(add(start,w*7+wd))}return days}
 function slots(type,m,days){const out=[];for(const day of days){const duration=rand(...TYPES[type].duration),age=ageOn(m,day);if(age===null)return null;const endMax=age<15?20:age<18?22:23;const latest=endMax-duration;if(latest<7)return null;const start=rand(7,latest);out.push({date:day,start,end:start+duration,duration,done:false,travel:false})}return out}
 function conflicts(m,slots){return all().some(w=>String(w.memberId)===String(m.id)&&['accepted','shooting','completed'].includes(w.status)&&w.slots.some(s=>slots.some(x=>x.date===s.date)))}
-function produce(g,m,type,lead=false,options={}){const t=TYPES[type];if(!g||!m||!t||score(m)<t.min[lead?1:0])return null;const start=options.start||add(date(),rand(12,25));const days=scheduleDates(type,start),shoot=slots(type,m,days);if(!shoot)return null;const end=days[days.length-1],release=type==='film'?add(end,90):type==='short'?add(end,7):add(start,type==='late'?14:30);const episodes=type==='film'?1:type==='short'?5:10;const name=title(type==='film'?'film':'drama');if(!name)return null;const sender=type==='film'?pick(STUDIOS):pick(STATIONS),genre=pick(GENRES),role=pick(ROLES),roleName=pick(FAMILY)+pick(GIVEN);const w={id:id(),type,lead,title:name,groupId:g.id,groupName:g.name,memberId:m.id,memberName:m.stageName||m.name,sender,genre,role,roleName,start,end,release,episodes,slots:shoot,fee:rand(...t.fee[lead?1:0]),status:'offered',received:date(),deadline:add(date(),7),absences:0,paid:false,effects:0,roleDescription:role};all().push(w);
+function produce(g,m,type,lead=false,options={}){const t=TYPES[type];if(!g||!m||!t||score(m)<t.min[lead?1:0]||!dramaAudienceEligible(g,m,type,lead))return null;const start=options.start||add(date(),rand(12,25));const days=scheduleDates(type,start),shoot=slots(type,m,days);if(!shoot)return null;const end=days[days.length-1],release=type==='film'?add(end,90):type==='short'?add(end,7):add(start,type==='late'?14:30);const episodes=type==='film'?1:type==='short'?5:10;const name=title(type==='film'?'film':'drama');if(!name)return null;const sender=type==='film'?pick(STUDIOS):pick(STATIONS),genre=pick(GENRES),role=pick(ROLES),roleName=pick(FAMILY)+pick(GIVEN);const w={id:id(),type,lead,title:name,groupId:g.id,groupName:g.name,memberId:m.id,memberName:m.stageName||m.name,sender,genre,role,roleName,start,end,release,episodes,slots:shoot,fee:rand(...t.fee[lead?1:0]),status:'offered',received:date(),deadline:add(date(),7),absences:0,paid:false,effects:0,roleDescription:role};all().push(w);
  const lines=shoot.map(s=>`${s.date} ${s.start}:00〜${s.end}:00（${s.duration}時間）`).join('\n');
  const body=`${state.agency||'芸能事務所'} ご担当者様\n\n突然のご連絡失礼いたします。${sender} 制作担当でございます。\n\nこのたび弊社制作の${type==='film'?'映画':'ドラマ'}『${name}』にて、${g.name}所属の${w.memberName}様にご出演いただきたくご連絡いたしました。\n\n【作品概要】\n作品名：${name}\nジャンル：${genre}\nあらすじ：${genre}をテーマに、${role}が大切な人との関係や自分の未来に向き合う物語です。\n出演区分：${lead?'主演':'主演以外'}\n役名：${roleName}\n役柄：${role}\n\n【撮影・${type==='film'?'公開':'放送'}概要】\n撮影期間：${start}〜${end}\n撮影回数：${shoot.length}日\n${type==='film'?'公開予定日':'初回放送日'}：${release}\n${type==='film'?'':'放送：全'+episodes+'話・週1回'}\n総出演料：${fmt(w.fee)}（全撮影完了後一括）\n回答期限：${w.deadline}\n\n【全撮影日程】\n${lines}\n\nご検討のうえ、期日までにご回答いただけますと幸いです。\n\n何卒よろしくお願い申し上げます。\n${sender} 制作担当`;
  mailItems().push({id:id(),folder:'inbox',subject:`【出演のご依頼】${type==='film'?'映画':'ドラマ'}『${name}』／${w.memberName}様`,body,date:date(),from:sender,read:false,dramaFilmId:w.id});notice(`${w.memberName}への『${name}』出演依頼が届きました。`);save();return w}
@@ -3488,15 +3505,15 @@ function shoot(w){const s=w.slots.find(x=>x.date===date());if(w.status!=='accept
 function effects(w){if(w.status!=='completed')return;const due=w.type==='film'?1:w.episodes;const aired=Array.from({length:due},(_,i)=>add(w.release,w.type==='film'?0:i*7)).filter(d=>d<=date()).length;while(w.effects<aired){const t=TYPES[w.type],m=actor(w),g=(state.groups||[]).find(x=>String(x.id)===String(w.groupId));if(!m||!g)break;const factor=w.lead?1.5:1;const f=Math.round(rand(...t.fame)*factor/due),p=Math.round(rand(...t.pop)*factor/due);g.fame=typeof idolFameAdd==='function'?idolFameAdd(Number(g.fame)||0,f):Math.min(100000,(Number(g.fame)||0)+f);m.popularityBuzzXp=Math.min(8000,(Number(m.popularityBuzzXp)||0)+p);m.dramaFilmPopularityBoost=(Number(m.dramaFilmPopularityBoost)||0)+p;w.fameGained=(w.fameGained||0)+f;w.popGained=(w.popGained||0)+p;w.effects++} }
 function leave(){for(const w of all()){if(w.status==='offered'&&date()>=w.deadline)w.status='expired';if(w.status==='accepted'){const s=w.slots.find(x=>x.date===date());if(s&&!s.done){w.absences++;if(w.absences===1){mailItems().push({id:id(),folder:'inbox',subject:`【撮影欠席に関するご連絡】『${w.title}』`,body:`${state.agency} ご担当者様\n\n${w.sender} 制作担当です。\n本日の撮影にご参加いただけなかったため、警告のご連絡を差し上げます。次回欠席の場合は降板となります。\n\n${w.sender}`,date:date(),from:w.sender,read:false});notice(`『${w.title}』の撮影を欠席しました（1回目）。`)}else{w.status='withdrawn';state.schedule=(state.schedule||[]).filter(x=>x.dramaFilmId!==w.id||x.date<=date());notice(`『${w.title}』を2回欠席したため降板しました。`)}}}}save()}
 function enter(){for(const w of all())effects(w);generate();save()}
-function generate(){if(!state.agency||!(state.groups||[]).length)return;const month=date().slice(0,7);if(state.dramaFilmCheckedMonth===month)return;state.dramaFilmCheckedMonth=month;let count=0;for(const type of Object.keys(TYPES)){if(count>=20)break;const candidates=[];for(const g of state.groups)for(const m of g.members||[])for(const lead of [false,true])if(score(m)>=TYPES[type].min[lead?1:0])candidates.push({g,m,lead});if(!candidates.length)continue;
+function generate(){if(!state.agency||!(state.groups||[]).length)return;const month=date().slice(0,7);if(state.dramaFilmCheckedMonth===month)return;state.dramaFilmCheckedMonth=month;let count=0;for(const type of Object.keys(TYPES)){if(count>=20)break;const candidates=[];for(const g of state.groups)for(const m of g.members||[])for(const lead of [false,true])if(score(m)>=TYPES[type].min[lead?1:0]&&dramaAudienceEligible(g,m,type,lead))candidates.push({g,m,lead});if(!candidates.length)continue;
  const strength=Math.max(0,Math.min(1,Math.max(...candidates.map(x=>IR_INVITATION_DEMAND(x.g,x.m,'drama')))));
- const draws=strength>=.94?8:strength>=.8?5:strength>=.55?3:strength>=.3?2:1;
- for(let trial=0;trial<draws&&count<20;trial++){
-  const weighted=candidates.map(x=>({x,w:1+Math.max(0,score(x.m)-TYPES[type].min[x.lead?1:0])/2000}));
+ const draws=strength>=.85?6:strength>=.65?4:strength>=.42?3:strength>=.22?2:1;
+ for(let trial=0;trial<draws&&count<12;trial++){
+  const weighted=candidates.map(x=>({x,w:.2+IR_INVITATION_DEMAND(x.g,x.m,'drama')*5+Math.max(0,score(x.m)-TYPES[type].min[x.lead?1:0])/8000}));
   let roll=Math.random()*weighted.reduce((sum,v)=>sum+v.w,0);const x=(weighted.find(v=>(roll-=v.w)<=0)||weighted[weighted.length-1]).x;
   const eligibility=Math.max(0,Math.min(1,(score(x.m)-TYPES[type].min[x.lead?1:0])/Math.max(1,8000-TYPES[type].min[x.lead?1:0])));
   const demand=IR_INVITATION_DEMAND(x.g,x.m,'drama');
-  const chance=Math.min(.995,TYPES[type].odds[x.lead?1:0]+eligibility*.15+demand*({short:.66,late:.78,prime:.88,film:.90}[type]));
+  const reach=Math.min(1,Math.max(0,Number(x.g.fame)||0)/100000)*.5+Math.min(1,groupPopularityPoints(x.g).total/8000)*.5;const visibility=Math.pow(reach,1.6);const chance=Math.min(.94,(TYPES[type].odds[x.lead?1:0]*.20+eligibility*.025)*visibility+demand*visibility*({short:.56,late:.65,prime:.70,film:.72}[type]));
   if(Math.random()<chance&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,date()))&&produce(x.g,x.m,type,x.lead))count++;
  }
  }save()}
