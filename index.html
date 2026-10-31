@@ -6042,4 +6042,51 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  window.IDOL_ROAD_SCANDAL_WAVES_V159={update};
 })();
 </script>
+<script>
+/* IDOL ROAD v176: organic X reactions during active SONG buzz, distinct from member post buzz. */
+(function(){
+ const previous=window.__idolRoadXCommunity;
+ if(typeof previous!=='function')return;
+ const samples=[
+  ['この曲、何回も聴いちゃう','サビが頭から離れない','最近ずっと聴いてる！','この曲好きな人増えててうれしい'],
+  ['おすすめで流れてきたけど良曲すぎる','友達から薦められて聴いた！','この曲のサビ、どこかで聴いたことある','最近よく名前を見かける'],
+  ['普段このジャンル聴かないけどハマった','この曲、タイムラインで何度も見かける','誰の曲か気になって調べた','この曲をきっかけにグループを知った'],
+  ['音楽の話題でこの曲がめちゃくちゃ流れてくる','アイドル詳しくない人までこの曲の話してる','この曲、いろんなところで聴く','この曲の話題、すごい広がり方だね']
+ ];
+ function sync(){
+  if(!state||!Array.isArray(state.productions))return;
+  const day=today(),db=state.idolXCommunity;
+  if(!db||!Array.isArray(db.posts))return;
+  const groups=new Map((state.groups||[]).map(g=>[String(g.id),g]));
+  let changed=false;
+  const hash=v=>{let h=2166136261;for(const c of String(v)){h=Math.imul(h^c.charCodeAt(0),16777619)}return h>>>0};
+  const fmt=(song,level,n)=>{
+   const texts=samples[level-1],line=texts[n%texts.length];
+   return [`『${song}』、${line}`,`${line} 『${song}』`,`${song}って曲、${line}`][n%3];
+  };
+  for(const track of state.productions){
+   const b=track?.buzz,level=Math.max(0,Math.min(4,Number(b?.level)||0));
+   if(!track?.published||!level||!b.start||day<b.start||day>b.end)continue;
+   const g=groups.get(String(track.groupId));if(!g)continue;
+   const title=String(track.title||'').trim();if(!title)continue;
+   const key='songbuzz:'+String(track.id)+':'+day;
+   if(db.posts.some(p=>p.songBuzzDailyKey===key))continue;
+   // A low-profile track has a smaller wave; a large buzz visibly reaches outsiders regardless.
+   const count=[0,3,7,14,24][level];
+   const fanCount=Math.ceil(count*([0,.9,.72,.5,.3][level]));
+   for(let n=0;n<count;n++){
+    const fan=n<fanCount,num=++db.serial;
+    const author=fan?['音楽好き','推し活中','アイドル好き','今日も推し活','ライブ好き','さくら','みお','あお'][num%8]:['通りすがり','普段は邦ロック派','プレイリスト探し中','音楽のある暮らし','おすすめで見た人','日常メモ'][num%6];
+    const h=hash(key+':'+n),base=[0,8,25,90,350][level];
+    db.posts.unshift({id:'xc'+num,name:author,handle:'@'+(fan?'oshi_':'music_')+num,authorId:'songbuzz'+num,
+      body:fmt(title,level,n),kind:'buzz',quoteOf:null,date:day,likes:base+Math.round((h%100)*base/40),reposts:Math.round(base*(h%23)/90),
+      songBuzzDailyKey:key,songBuzzTrackId:String(track.id),songBuzzGroupId:String(g.id)});
+   }
+   changed=true;
+  }
+  if(changed)save();
+ }
+ window.__idolRoadXCommunity=function(){const out=previous.apply(this,arguments);sync();return state.idolXCommunity?.posts||out;};
+})();
+</script>
 </body></html>
