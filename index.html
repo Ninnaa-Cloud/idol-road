@@ -1314,8 +1314,8 @@ function liveEstimateHTML(pref,capacity,days,members,type){
 
 <script>
 /* Attendance forecast: rank-interpolated group popularity, region, venue cap. */
-const LIVE_RANK_BASE=[2,6,18,50,140,420,1800,6000];
-const LIVE_RANK_MAX=[6,18,50,140,420,1800,6000,40000];
+const LIVE_RANK_BASE=[2,6,18,80,225,540,2000,6000];
+const LIVE_RANK_MAX=[6,18,80,225,540,2000,6000,40000];
 const LIVE_MEMBER_BASE=[1,2,5,12,30,75,250,900];
 const LIVE_MEMBER_MAX=[2,5,12,30,75,250,900,3000];
 // Fame is a separate 0–100,000 group-level progression; member popularity remains 0–8,000.
@@ -1354,7 +1354,11 @@ function livePredictAttendance(group,pref,capacity,date){
  for(const member of members){
   totalBonus+=liveRankAttendanceValue(popularityPoints(member),LIVE_MEMBER_BASE,LIVE_MEMBER_MAX);
  }
- return Math.max(0,Math.min(capacity,Math.round((baseline+totalBonus+idolFameAudienceBonus(group.fame))*liveRegionMultiplier(pref)*liveAttendanceDayMultiplier(date))));
+ // C or above: a small 150-seat venue is within the group's dependable core audience.
+ // Larger venues retain region/day demand effects; venue size never creates fans.
+ const calculated=Math.round((baseline+totalBonus+idolFameAudienceBonus(group.fame))*liveRegionMultiplier(pref)*liveAttendanceDayMultiplier(date));
+ const core=(groupPoints>=3000)?Math.min(capacity,150):0;
+ return Math.max(0,Math.min(capacity,Math.max(core,calculated)));
 }
 function irLivePriceMultiplier(price){
  const p=Number(price)||2000;
@@ -3031,8 +3035,10 @@ if(t.status==='waiting'&&remaining(e.date)>=0&&(e.l.mode!=='regular'||remaining(
  const f=e.l.attendanceForecasts?.[e.i];
  if(f&&!f.priceAdjusted){
    f.beforePricePredicted=f.predicted;
-   f.predicted=Math.min(cap(e),Math.max(0,Math.round((Number(f.predicted)||0)*irLivePriceMultiplier(n))));
-   f.actual=liveDrawAttendance(f.predicted,cap(e));
+   const groupForPrice=group(e.l);
+   const cCore=groupForPrice&&Number(groupPopularityDetails(groupForPrice).total)>=3000?Math.min(cap(e),150):0;
+   f.predicted=Math.min(cap(e),Math.max(cCore,Math.max(0,Math.round((Number(f.predicted)||0)*irLivePriceMultiplier(n)))));
+   f.actual=(cCore&&cap(e)<=150)?cap(e):liveDrawAttendance(f.predicted,cap(e));
    f.priceAdjusted=true;
  }
 if(e.l.graduationId)window.IDOL_ROAD_GRADUATION?.ticketStarted(e.l.graduationId,e.l,t);tick();saveChanges();show();};const lab1=document.createElement('label');lab1.textContent='販売方式 ';lab1.append(method);const lab2=document.createElement('label');lab2.textContent=' チケット価格 ';lab2.append(price);d.append(lab1,lab2,start);}
@@ -3403,7 +3409,7 @@ window.IDOL_BOOKING={
   const travel=typeof LIVE_TRAVEL_MINUTES!=='undefined'&&Number.isFinite(Number(LIVE_TRAVEL_MINUTES[pref]))?Number(LIVE_TRAVEL_MINUTES[pref])/60:0;
   const show=Number(l.duration)>0?Number(l.duration):(l.graduationId?4:3);
   const benefit=l.benefit||l.type==='joint'||l.type==='external';
-  return {start:start-travel,end:start+show+(benefit?1:0)+travel};
+  return {start:start-travel,end:start+show+(benefit?1:0)};
  },
  list(){const out=[];const st=state||{};const add=(id,date,start,end,groupId,memberId,title,kind,order)=>{if(!date||!groupId)return;out.push({id:String(id),date:String(date),start:Number(start??0),end:Number(end??24),groupId:String(groupId),memberId:memberId==null?null:String(memberId),title:String(title||''),kind,order:Number(order||0)});};
  const time=x=>{const a=String(x||'').match(/(\d{1,2}):?(\d{2})?\s*[-〜～]\s*(\d{1,2}):?(\d{2})?/);return a?[+a[1]+(+a[2]||0)/60,+a[3]+(+a[4]||0)/60]:[0,24]};
@@ -6186,6 +6192,107 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
   if(changed)save();
  }
  window.__idolRoadXCommunity=function(){const out=previous.apply(this,arguments);sync();return state.idolXCommunity?.posts||out;};
+})();
+</script>
+<script id="ir-live-overlap-v182">
+/* Same-group live conflicts: outward travel, performance, optional cheki only. */
+(function(){'use strict';
+ const book=window.IDOL_BOOKING;if(!book)return;
+ const baseList=book.list.bind(book);
+ const hour=v=>book.hour(v??'13:00');
+ const travel=p=>Number((typeof LIVE_TRAVEL_MINUTES!=='undefined'&&LIVE_TRAVEL_MINUTES[p])??0)/60;
+ const key=d=>{const t=new Date(String(d).slice(0,10)+'T12:00:00');return t;};
+ const dateShift=(d,n)=>{const t=key(d);if(!Number.isFinite(t.getTime()))return null;t.setDate(t.getDate()+n);return [t.getFullYear(),String(t.getMonth()+1).padStart(2,'0'),String(t.getDate()).padStart(2,'0')].join('-');};
+ const slots=()=>{
+  const out=[],ids=new Set();
+  function add(x,date,i,external){
+   if(!date||!x?.groupId)return;
+   const st=external?x:(x.stops?.[i]||x),start=hour(st.time||x.time||'13:00');
+   const pref=st.pref||x.pref||'東京都',t=travel(pref);
+   const length=x.graduationId?4:3;
+   const benefit=external?(/特典会あり/.test(String(x.text||''))||x.benefit!==false):!!(x.benefit||x.benefitMeeting||x.hasBenefit||x.cheki);
+   const id='live:'+String(x.id)+':'+date,from=start-t,to=start+length+(benefit?1:0);
+   for(let n=-1;n<=1;n++){
+    const a=Math.max(0,from-24*n),b=Math.min(24,to-24*n),d=dateShift(date,n);
+    if(!d||a>=b)continue;
+    out.push({id,date:d,start:a,end:b,groupId:String(x.groupId),memberId:null,title:String(x.name||x.event||x.title||'ライブ'),kind:'live',order:Number(x.bookingOrder||0),originalDate:date,travel:t,benefit});
+   }
+  }
+  for(const x of state.hostedLives||[]){if(['cancelled','canceled','rejected','declined'].includes(x.status))continue;
+   if(x.type==='external'&&x.externalInviteId){ids.add(String(x.externalInviteId));continue;}
+   const ds=x.dates?.length?x.dates:[x.date||x.eventDate||x.liveDate].filter(Boolean);
+   ds.forEach((d,i)=>add(x,d,i,false));
+  }
+  for(const x of state.externalInvites||[]){if(!['accepted','completed'].includes(x.status))continue;
+   if(ids.has(String(x.id))){} // invitation is the authoritative event when a linked hosted copy exists
+   add(x,x.date,0,true);
+  }
+  return out;
+ };
+ book.list=function(){return baseList().filter(x=>x.kind!=='live'&&x.kind!=='external').concat(slots());};
+ function warnings(){
+  const today=[state.year,String(state.month).padStart(2,'0'),String(state.day).padStart(2,'0')].join('-');
+  const a=slots().filter(x=>x.date===today),result=[];
+  for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){
+   const x=a[i],y=a[j];if(x.groupId!==y.groupId||x.id===y.id||x.originalDate===y.originalDate&&x.id===y.id)continue;
+   if(x.start<y.end&&y.start<x.end)result.push([x,y]);
+  }
+  return result;
+ }
+ function draw(){
+  const root=document.getElementById('content');if(!root||!root.classList.contains('live-panel'))return;
+  const section=root.querySelector('.live-today');if(!section)return;
+  section.querySelector('#ir-live-overlap-warning-v182')?.remove();
+  const collisions=warnings();if(!collisions.length)return;
+  const panel=document.createElement('div');panel.id='ir-live-overlap-warning-v182';
+  panel.setAttribute('role','alert');panel.style.cssText='border:2px solid #f4aa69;background:#422a35;border-radius:10px;padding:12px;margin:12px 0;color:#fff;white-space:pre-line;line-height:1.7';
+  const fmt=v=>`${String(Math.floor(v)).padStart(2,'0')}:${String(Math.round((v%1)*60)).padStart(2,'0')}`;
+  const title=document.createElement('strong');title.textContent='⚠ スケジュール重複：同じグループのライブが重なっています';panel.append(title);
+  for(const [a,b] of collisions){const line=document.createElement('p');line.style.margin='8px 0 0';line.textContent=`${a.title} ／ ${b.title}\n重複時間 ${fmt(Math.max(a.start,b.start))}〜${fmt(Math.min(a.end,b.end))}（往路移動・本編・特典会を含む）`;panel.append(line);}
+  section.insertBefore(panel,section.children[1]||null);
+ }
+ const previous=window.renderLiveHost;
+ if(typeof previous==='function')window.renderLiveHost=function(){const value=previous.apply(this,arguments);draw();return value;};
+ window.IR_LIVE_OVERLAP_V182={slots,warnings,draw};
+})();
+</script>
+<script id="ir-personal-priority-v183">
+/* v183: A solo appointment wins only when its occupied time overlaps the group activity.
+   Outward travel is included; no return-trip lock is added. */
+(function(){'use strict';
+ const book=window.IDOL_BOOKING;if(!book)return;
+ const oldParticipates=book.participates.bind(book);
+ const oldList=book.list.bind(book);
+ const hour=v=>book.hour(v);
+ const active=x=>!['rejected','declined','cancelled','canceled','withdrawn','dropped'].includes(String(x?.status||''));
+ const soloSlots=()=>{
+   const slots=[];
+   const put=(id,gid,mid,date,start,end,title)=>{
+     if(mid==null||!date||!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return;
+     slots.push({id:'irsolo:'+id,groupId:String(gid),memberId:String(mid),date:String(date),start:Math.max(0,start),end:Math.min(24,end),kind:'ir-solo-priority',title});
+   };
+   for(const x of state.varietyTV||[]){
+     if(!active(x)||x.mode!=='solo'||!x.memberId||!['accepted','recorded','broadcasted'].includes(x.status))continue;
+     const day=x.recordDate||x.broadcastDate;if(!day)continue;
+     const match=String(x.slot||'').match(/(\d{1,2}):?(\d{2})?\s*[-〜～]\s*(\d{1,2}):?(\d{2})?/);
+     if(match){const a=+match[1]+(+match[2]||0)/60,b=+match[3]+(+match[4]||0)/60;put('variety:'+x.id,x.groupId,x.memberId,day,a-1,b,x.name);}
+     else {const base=oldList().find(z=>z.kind==='variety'&&z.memberId===String(x.memberId)&&z.date===day&&z.id==='variety:'+x.id);if(base)put('variety:'+x.id,x.groupId,x.memberId,day,base.start-1,base.end,x.name);}
+   }
+   for(const x of state.dramaFilmWorks||[]){
+     if(!active(x)||!['accepted','shooting','completed'].includes(x.status)||!x.memberId)continue;
+     for(const slot of x.slots||[]){if(!slot.date||slot.done)continue;
+       put('drama:'+x.id+':'+slot.date,x.groupId,x.memberId,slot.date,Number(slot.start)-1,Number(slot.end),x.title);
+     }
+   }
+   return slots;
+ };
+ book.list=function(){return oldList().filter(x=>!((x.kind==='variety'||x.kind==='drama')&&x.memberId!==null)).concat(soloSlots());};
+ book.participates=function(m,gid,date,start=0,end=24,bookingId=null){
+   if(!oldParticipates(m,gid,date,start,end,bookingId))return false;
+   const id=String(m?.id??m);
+   return !soloSlots().some(x=>x.groupId===String(gid)&&x.memberId===id&&x.date===date&&x.start<end&&start<x.end);
+ };
+ window.IR_SOLO_PRIORITY_V183={soloSlots};
 })();
 </script>
 </body></html>
