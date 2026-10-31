@@ -3105,6 +3105,31 @@ function get(e){const r=records();return r[e.key]??(r[e.key]={status:'waiting',a
 function cap(e){return Math.max(1,Number(e.l.stops?.[e.i]?.capacity||e.l.capacity||1));}
 function forecast(e){return Math.max(0,Number(e.l.attendanceForecasts?.[e.i]?.predicted||0));}
 function saveChanges(){save();}
+/* Multi-date hosted live: publish one combined official X announcement after every date's ticket sale begins. */
+function announceAllDatesOnSale(l){
+ const dates=[...new Set((l?.dates||[]).filter(Boolean))].sort();
+ if(dates.length<2||!l?.id)return;
+ const allStarted=dates.every(date=>{
+  const t=records()[String(l.id)+'::'+date];
+  return t&&['selling','lottery_pending','finished'].includes(t.status);
+ });
+ if(!allStarted)return;
+ const posted=state.irMultiDateLiveSalePosts??={};
+ const announcementKey=String(l.id)+'|'+dates.join('|');
+ if(posted[announcementKey])return;
+ const g=group(l);
+ if(!g||typeof idolXAdd!=='function')return;
+ const period=dates[0]+'〜'+dates[dates.length-1];
+ const name=String(l.name||g.name+' ライブ');
+ const venueNames=[...new Set(dates.map(date=>{
+  const i=(l.dates||[]).indexOf(date);
+  return l.stops?.[i]?.venue||l.venue||'';
+ }).filter(Boolean))];
+ const venueLine=venueNames.length===1?'\n会場：'+venueNames[0]:'';
+ const body='【チケット販売のお知らせ】\n'+name+'\n'+period+'開催！\n全'+dates.length+'日程のチケット販売を開始しました！'+venueLine+'\nぜひお越しください！';
+ const post=idolXAdd('group:'+g.id,g.name,typeof idolXHandleGroup==='function'?idolXHandleGroup(g):'@group',body);
+ if(post)posted[announcementKey]=post.id||true;
+}
 function ticketDemand(e,t){
  const base=Math.max(0,forecast(e)),max=cap(e);const g=group(e.l);const song=window.IDOL_RECENT_BUZZ.song(g,today()),sns=window.IDOL_RECENT_BUZZ.group(g,today());const extra=Math.min(.15,song*.027+sns*.025);const total=Math.min(max,Math.round(base*(0.87+(Math.abs(ticketHash(e.key)%27)/100)+extra)));
  const span=Math.max(1,Math.round((new Date(e.date+'T12:00:00')-new Date(t.started+'T12:00:00'))/86400000)+1);
@@ -3150,7 +3175,7 @@ if(t.status==='waiting'&&remaining(e.date)>=0&&(e.l.mode!=='regular'||remaining(
    f.actual=(cCore&&cap(e)<=150)?cap(e):liveDrawAttendance(f.predicted,cap(e));
    f.priceAdjusted=true;
  }
-if(e.l.graduationId)window.IDOL_ROAD_GRADUATION?.ticketStarted(e.l.graduationId,e.l,t);tick();saveChanges();show();};const lab1=document.createElement('label');lab1.textContent='販売方式 ';lab1.append(method);const lab2=document.createElement('label');lab2.textContent=' チケット価格 ';lab2.append(price);d.append(lab1,lab2,start);}
+if(e.l.graduationId)window.IDOL_ROAD_GRADUATION?.ticketStarted(e.l.graduationId,e.l,t);tick();announceAllDatesOnSale(e.l);saveChanges();show();};const lab1=document.createElement('label');lab1.textContent='販売方式 ';lab1.append(method);const lab2=document.createElement('label');lab2.textContent=' チケット価格 ';lab2.append(price);d.append(lab1,lab2,start);}
 if(t.status!=='waiting'){const sales=document.createElement('p');sales.textContent=`申込人数 ${t.apps}人／販売枚数 ${t.sold}枚／定員 ${cap(e)}人／単価 ${(t.price||0).toLocaleString()}円`;d.append(sales);if(t.dailyApps?.length){const history=document.createElement('p');history.textContent='日別申込：'+t.dailyApps.slice(-10).map(x=>x.date+' '+x.apps+'人').join('／');d.append(history);}}
 if(!['cancelled','auto_cancelled'].includes(t.status)&&remaining(e.date)>=1){const btn=document.createElement('button');btn.textContent='このライブをキャンセル';btn.onclick=()=>{if(!confirm(`${e.l.name}をキャンセルしますか？ 会場費は返金されず、チケットは全額返金、出演確定の他グループ1組につき5万円を支払います。`))return;cancel(e,false);show();if(state.tab==='活動'&&state.sub==='ライブ')renderLiveHost();};d.append(btn);}block.append(d);}wrapper.append(block);}
 root.querySelector('#hosted-live-ticket-sales')?.remove();(root.querySelector('#idol-ticket-unified-list')||root).append(wrapper);window.__idolTicketUnify?.();}
