@@ -2634,7 +2634,38 @@ function irCDReleaseMemberPosts(t,g){const num=irCDNumber(t);const first=num===1
 function startCD(id){const t=all().find(x=>x.id===id);if(!t?.published||t.cdDue||t.cdStart)return;const g=group(t.groupId);if(!g)return;if(recordState(g).status!=='contracted'){alert('CD販売にはサクラレコードとの契約が必要です。ビジネスメールをご確認ください。');return}if(!irCDSongCostumeReady(t)){alert('この楽曲の「楽曲衣装」が完成していません。経営 → 制作で楽曲衣装を完成させてからCD販売を申し込んでください。');return}if(Number(state.agencyFunds||0)<1000000){alert('CD販売の初期費用100万円が不足しています。');return}const due=recordMonthPlus(today(),2);if(!confirm(`『${t.title}』のCD販売準備を開始しますか？\n初期費用：1,000,000円\n発売予定日：${due}\n※申込み後のキャンセルはできません。`))return;state.agencyFunds-=1000000;window.IDOL_ACCOUNTING?.record(-1000000,t.groupId,null,'production','CD販売準備費');t.cdDue=due;t.cdRequested=true;t.cdRequestedAt=today();t.cdSingleNumber=(state.productions||[]).filter(x=>String(x.groupId)===String(t.groupId)&&(x.cdDue||x.cdStart)).length;t.cdUnits=Number(t.cdUnits||0);irCDAnnounce(t,g);save();renderProduction()}
 function recordBase(fame,cd){const f=Math.max(0,Math.min(IDOL_FAME_MAX,Number(fame)||0));const ranges=cd?[[0,0],[0,0],[0,0],[1000,3000],[3000,8000],[8000,20000],[20000,50000],[50000,100000],[100000,150000]]:[[50,300],[300,1000],[1000,3000],[3000,8000],[8000,20000],[20000,50000],[50000,100000],[100000,200000],[200000,300000]];const k=Math.min(8,Math.floor(f/1000));const [lo,hi]=ranges[k];const extra=f<=8000?1:1+3*Math.pow((f-8000)/92000,1.05);return (lo+Math.random()*(hi-lo))*extra}
 function recordBuzzMultiplier(t){const b=t.buzz;if(!b||today()>b.end)return 1;return [1,1.5,2.5,5,10][Math.max(0,Math.min(4,Number(b.level)||0))]}
-function recordSell(t,kind){const isCD=kind==='cd',start=isCD?t.cdStart:t.streamStart;if(!start)return;const lastKey=isCD?'cdLastDay':'streamLastDay',countKey=isCD?'cdUnits':'streamUnits';if(t[lastKey]===today())return;const before=Math.max(0,Number(t[countKey])||0);if(before>=SALES_LIMIT){t[lastKey]=today();return}const elapsed=Math.max(0,Math.round((new Date(today()+'T12:00:00')-new Date(start+'T12:00:00'))/86400000));const decay=elapsed<1?1:elapsed<7?0.7:elapsed<30?0.32:Math.max(0.003,0.12*Math.exp(-(elapsed-30)/120));const g=group(t.groupId),fame=g?.fame||0;const units=Math.max(0,Math.floor(recordBase(fame,isCD)*decay*recordBuzzMultiplier(t)*(fame<3000?0.78:fame<10000?0.66:0.52)));const after=Math.min(SALES_LIMIT,before+units),delta=after-before;t[countKey]=after;t[lastKey]=today();state.agencyFunds+=delta*(isCD?720:150);window.IDOL_ACCOUNTING?.record(delta*(isCD?720:150),t.groupId,null,'music','楽曲販売売上');for(const threshold of SALES_MILESTONES)if(before<threshold&&after>=threshold)recordNews(`${t.groupName}『${t.title}』が累計${(threshold/10000).toLocaleString()}万${isCD?'枚':'ダウンロード'}を達成しました！${threshold===1000000?' ミリオン達成！':threshold===2000000?' ダブルミリオン達成！':''}`)}
+// v205: cumulative releases retain their existing totals; only future daily sales are recalibrated.
+// The original units were tens of thousands per day at fame ~10,000 even without a hit.
+function irReleaseSalesBalance(t,isCD){
+ const active=!!(t?.buzz&&t.buzz.start&&today()>=t.buzz.start&&(!t.buzz.end||today()<=t.buzz.end));
+ const level=active?Math.max(0,Math.min(4,Number(t.buzz.level)||0)):0;
+ // Lower routine sales; keep a meaningful difference between small and major viral tracks.
+ const scale=isCD?.043:.055;
+ const g=group(t?.groupId);
+ const fameFactor=Math.max(0,Math.min(1,(Number(g?.fame)||0)/100000));
+ // Streaming prioritizes the song's actual composition/choreography precision;
+ // physical CD demand prioritizes the group's fan popularity.
+ const composition=Math.max(0,Math.min(100,Number(t?.songQuality??t?.accuracy??65)||0));
+ const choreography=Math.max(0,Math.min(100,Number(t?.danceQuality??composition)||0));
+ const songPrecision=(composition*.8+choreography*.2)/100;
+ let groupPopularity=0;
+ if(g){try{groupPopularity=Math.max(0,Math.min(1,(Number(groupPopularityPoints(g).total)||0)/8000));}catch(e){groupPopularity=0;}}
+ const demand=isCD?(groupPopularity*.65+fameFactor*.35):(songPrecision*.65+fameFactor*.35);
+ // Keep release-scale realistic; retain the existing duration decay and buzz multipliers.
+ const demandFactor=Math.max(.18,Math.min(1.35,.30+demand*1.05));
+ return scale*demandFactor*(level>=3?1.10:1);
+}
+function irSongMarketSignal(g){
+ let top=0;
+ for(const t of state.productions||[]){if(String(t.groupId)!==String(g?.id))continue;
+ const units=Math.max(Number(t.streamUnits)||0,Number(t.cdUnits)||0);
+ const hit=units>=1000000?4:units>=500000?3:units>=100000?2:units>=30000?1:0;
+ const buzz=t.buzz&&today()<=t.buzz.end?Math.min(4,Number(t.buzz.level)||0):0;
+ top=Math.max(top,hit,buzz);
+ }
+ return top;
+}
+function recordSell(t,kind){const isCD=kind==='cd',start=isCD?t.cdStart:t.streamStart;if(!start)return;const lastKey=isCD?'cdLastDay':'streamLastDay',countKey=isCD?'cdUnits':'streamUnits';if(t[lastKey]===today())return;const before=Math.max(0,Number(t[countKey])||0);if(before>=SALES_LIMIT){t[lastKey]=today();return}const elapsed=Math.max(0,Math.round((new Date(today()+'T12:00:00')-new Date(start+'T12:00:00'))/86400000));const decay=elapsed<1?1:elapsed<7?0.7:elapsed<30?0.32:Math.max(0.003,0.12*Math.exp(-(elapsed-30)/120));const g=group(t.groupId),fame=g?.fame||0;const units=Math.max(0,Math.floor(recordBase(fame,isCD)*decay*recordBuzzMultiplier(t)*irReleaseSalesBalance(t,isCD)*(fame<3000?0.78:fame<10000?0.66:0.52)));const after=Math.min(SALES_LIMIT,before+units),delta=after-before;t[countKey]=after;t[lastKey]=today();state.agencyFunds+=delta*(isCD?720:150);window.IDOL_ACCOUNTING?.record(delta*(isCD?720:150),t.groupId,null,'music','楽曲販売売上');for(const threshold of SALES_MILESTONES)if(before<threshold&&after>=threshold)recordNews(`${t.groupName}『${t.title}』が累計${(threshold/10000).toLocaleString()}万${isCD?'枚':'ダウンロード'}を達成しました！${threshold===1000000?' ミリオン達成！':threshold===2000000?' ダブルミリオン達成！':''}`)}
 function recordDaily(){for(const g of state.groups||[]){const r=recordState(g);if(Number(g.fame||0)>=3000&&r.status!=='contracted'&&r.status!=='pending'&&(!r.nextOffer||today()>=r.nextOffer))recordOffer(g)}for(const t of all()){if(t.cdDue&&!t.cdStart&&today()>=t.cdDue){t.cdStart=t.cdDue;t.cdLastDay=null;recordNews(`${t.groupName}『${t.title}』の${irCDNumber(t)===1?'メジャーデビューシングル':irCDOrdinal(irCDNumber(t))+'シングル'}が発売されました。`);if(!t.irCDReleaseMembersPosted){const g=group(t.groupId);if(g)irCDReleaseMemberPosts(t,g);t.irCDReleaseMembersPosted=true;}}recordSell(t,'stream');recordSell(t,'cd')}save()}
 function renderProduction(){
  ensure();const box=el('content');if(!box)return;box.className='prod-panel';
@@ -3621,14 +3652,20 @@ function onLeavingDay(){for(const r of records()){
  if(r.status==='recorded'&&r.broadcastDate===today())applyBroadcast(r);if(r.status==='accepted'&&!r.recordDate&&r.kind==='feature'&&r.broadcastDate===today()){r.status='recorded';applyBroadcast(r);}
  }save();}
 
-function generate(){if(!state.agency||!groups().length)return;const now=today();if(state.musicTVOfferCheck===now)return;state.musicTVOfferCheck=now;if(dateObj().getDate()!==1){save();return;}for(const g of groups()){
- const recentSongBuzz=window.IDOL_RECENT_BUZZ.song(g,now);const possible=CATALOG.filter(x=>fame(g)>=x.min*(1-Math.min(.18,recentSongBuzz*.045))&&(!x.month||x.month===state.month)&&songs(g).length);
- if(!possible.length)continue;const active=records().filter(r=>String(r.groupId)===String(g.id)&&['offered','accepted','recorded'].includes(r.status)).length;
+function generate(){if(!state.agency||!groups().length)return;const now=today();if(state.musicTVOfferCheck===now)return;state.musicTVOfferCheck=now;if(![1,8,15,22].includes(dateObj().getDate())){save();return;}for(const g of groups()){
+ const recentSongBuzz=window.IDOL_RECENT_BUZZ.song(g,now);const market=irSongMarketSignal(g);
+ // Hits improve the chance of being noticed, but do not completely replace recognition requirements.
+ const discount=Math.min(.32,recentSongBuzz*.045+market*.045);
+ const possible=CATALOG.filter(x=>fame(g)>=x.min*(1-discount)&&(!x.month||x.month===state.month)&&songs(g).length);
+ if(!possible.length)continue;
+ const month=now.slice(0,7);
+ const monthlyOffers=records().filter(r=>String(r.groupId)===String(g.id)&&r.received?.slice(0,7)===month).length;
+ const active=records().filter(r=>String(r.groupId)===String(g.id)&&['offered','accepted','recorded'].includes(r.status)).length;
  const strength=IR_INVITATION_DEMAND(g,null,'music');
- const shots=strength>=.85?7:strength>=.65?5:strength>=.42?3:strength>=.22?2:1;
- const cap=shots;
- for(let attempt=0;attempt<shots&&active+attempt<cap;attempt++){
-   if(Math.random()>Math.min(.94,(.055+strength*.83+recentSongBuzz*.015)))continue;
+ const shots=Math.min(5,1+Math.floor(strength*3)+Math.floor(market*.7));
+ const cap=market>=3?3:market>=1?2:1;
+ for(let attempt=0;attempt<shots&&monthlyOffers+attempt<cap&&active+attempt<Math.max(2,cap);attempt++){
+   if(Math.random()>Math.min(.90,(.07+strength*.68+recentSongBuzz*.035+market*.11)))continue;
    if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now))continue;
    const used=new Set(records().filter(r=>String(r.groupId)===String(g.id)&&r.received?.slice(0,7)===now.slice(0,7)).map(r=>r.name));
    const choices=possible.filter(c=>!used.has(c.name));if(!choices.length)break;
