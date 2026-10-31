@@ -4470,7 +4470,35 @@ function invitation(g,f,year){const quality=score(g,f),t=threshold(f),rank=quali
 const odds=Math.max(0,Math.min(.99,(f[1]==='idol'?[.3,.55,.8,.95]:[.1,.25,.5,.75])[rank]+bonus-penalty));if(Math.random()>odds)return;
 const n=Math.random()<[.05,.2,.4,.6][rank]?2:1,days=[...Array(f[4]).keys()],slots=[];for(let j=0;j<n;j++){const di=days.splice(R(0,days.length-1),1)[0],stage=pick(rank===3?['中','大','大']:rank===2?['小','中','大']:rank===1?['小','中']:['小']);const duration={'小':20,'中':30,'大':45}[stage],hour=stage==='小'?R(10,16):stage==='中'?R(11,18):R(13,20);const fees=f[1]==='idol'?{'小':[30000,50000],'中':[100000,200000],'大':[300000,500000]}:{'小':[50000,100000],'中':[200000,400000],'大':[500000,1000000]};const date=shift(`${year}-${String(f[2]).padStart(2,'0')}-${String(f[3]).padStart(2,'0')}`,di);slots.push({id:'festival-slot-'+(++data().seq),date,time:`${String(hour).padStart(2,'0')}:00`,duration,stage,fee:R(...fees[stage]),status:'offered'});}slots.sort((a,b)=>a.date.localeCompare(b.date));const id='festival-'+(++data().seq),deadline=shift(key(),7),i={id,groupId:g.id,groupName:g.name,festival:f[0],kind:f[1],region:f[5],year,deadline,status:'offered',slots};data().invitations.push(i);const lines=slots.map((s,j)=>`出演${j+1}：${s.date} ${s.time}〜（${s.duration}分）／${s.stage}ステージ／出演料 ${s.fee.toLocaleString()}円`).join('\n');mail('inbox',`【出演依頼】${f[0]} ${year} ご出演のお願い`,`${state.agency||'事務所'} ご担当者様\n\n平素よりお世話になっております。${f[0]}運営事務局です。\n貴社所属グループ「${g.name}」の皆様にご出演をお願いしたく、ご連絡いたしました。\n\n${lines}\n会場エリア：${f[5]}\n出演料合計：${slots.reduce((a,s)=>a+s.fee,0).toLocaleString()}円\n回答期限：${deadline}\n\nご検討のほどよろしくお願いいたします。\n${f[0]}運営事務局`,f[0]+'運営事務局',id);notice(`${g.name}に${f[0]}から出演依頼が届きました。`)}
 function select(){if(!state.agency||!groups().length)return;const d=key();for(const f of C){const year=state.year,opening=`${year}-${String(f[2]).padStart(2,'0')}-${String(f[3]).padStart(2,'0')}`;const diff=Math.round((new Date(opening+'T12:00:00')-new Date(d+'T12:00:00'))/86400000);if(diff<30||diff>60)continue;for(const g of groups()){const k=`${year}|${f[0]}|${g.id}`;if(data().checked[k])continue;data().checked[k]=true;const s=score(g,f);if(s>=threshold(f)&& (f[1]==='idol'||fame(g)>=threshold(f)*.65&&skill(g,'歌')>=2000&&skill(g,'ダンス')>=2000)&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,d)))invitation(g,f,year);}}}
-function answer(id,yes){const i=data().invitations.find(x=>x.id===id);if(!i||i.status!=='offered'||key()>i.deadline)return;const slots=i.slots; if(yes){for(const s of slots){const clashes=(state.schedule||[]).filter(e=>e.date===s.date&&!e.festivalSlotId);if(clashes.length&&!confirm(`${s.date}に既存予定があります。出演を優先すると、重複予定がキャンセルされます。続行しますか？`))return;}for(const s of slots){state.schedule=(state.schedule||[]).filter(e=>e.date!==s.date||e.festivalSlotId);s.status='accepted';state.schedule.push({date:s.date,title:`${i.groupName} ${i.festival}`,name:`${i.groupName} ${i.festival}`,text:`${s.time} ${s.stage}ステージ`,festivalSlotId:s.id});}}else slots.forEach(s=>s.status='declined');i.status=yes?'accepted':'declined';mail('sent',`Re: ${i.festival} ${i.year} 出演依頼`,`${i.festival}運営事務局 ご担当者様\n\nお世話になっております。${state.agency}でございます。\n${i.groupName}の出演につきまして、${yes?'ご依頼を承諾いたします。':'誠に恐縮ですが、今回は辞退させていただきます。'}\n\n何卒よろしくお願い申し上げます。`,i.festival+'運営事務局',id);save();render();if(typeof showMailbox==='function')showMailbox()}
+function answer(id,yes){
+ const i=data().invitations.find(x=>x.id===id);
+ if(!i||i.status!=='offered'||key()>i.deadline)return;
+ const slots=i.slots;
+ if(yes){
+  // Check actual performance time plus the game's one-hour travel period.
+  // The calendar contains informational entries without times; those are not blockers.
+  for(const s of slots){
+   const start=typeof IDOL_BOOKING!=='undefined'?IDOL_BOOKING.hour(s.time):Number(String(s.time).split(':')[0]);
+   const end=start+Number(s.duration||0)/60;
+   const clashes=typeof IDOL_BOOKING!=='undefined'&&typeof IDOL_BOOKING.conflict==='function'
+     ? IDOL_BOOKING.conflict({id:'festival:'+s.id,groupId:i.groupId,date:s.date,start:Math.max(0,start-1),end})
+     : [];
+   if(clashes.length){
+    const lines=clashes.map(x=>`${x.date} ${x.title} (${x.start}:00〜${x.end}:00)`).join('\n');
+    if(!confirm(`${s.date}のフェス出演時間（移動含む）が既存予定と重複しています。\n${lines}\n\n既存予定はキャンセルされません。重複したまま承諾しますか？`))return;
+   }
+  }
+  for(const s of slots){
+   s.status='accepted';
+   // Preserve all existing activities, including hosted multi-day concerts.
+   const calendar=state.schedule||(state.schedule=[]);
+   if(!calendar.some(e=>e.festivalSlotId===s.id))calendar.push({date:s.date,title:`${i.groupName} ${i.festival}`,name:`${i.groupName} ${i.festival}`,text:`${s.time} ${s.stage}ステージ`,festivalSlotId:s.id});
+  }
+ }else slots.forEach(s=>s.status='declined');
+ i.status=yes?'accepted':'declined';
+ mail('sent',`Re: ${i.festival} ${i.year} 出演依頼`,`${i.festival}運営事務局 ご担当者様\n\nお世話になっております。${state.agency}でございます。\n${i.groupName}の出演につきまして、${yes?'ご依頼を承諾いたします。':'誠に恐縮ですが、今回は辞退させていただきます。'}\n\n何卒よろしくお願い申し上げます。`,i.festival+'運営事務局',id);
+ save();render();if(typeof showMailbox==='function')showMailbox();
+}
 function deadline(){for(const i of data().invitations){if(i.status==='offered'&&key()>i.deadline){i.status='expired';i.slots.forEach(s=>s.status='expired')}}}
 const templates={INTP:['ステージを振り返ってみると、まだ改善できるところもあるけど、今日の経験はすごく貴重でした。ありがとう！','いつもと違う空気感で少し緊張したけど、ライブの時間はあっという間でした。'],ENFP:['最高に楽しかったー！！みんなの声が聞こえて本当に幸せだったよ！また会おうね！','夏の思い出がまたひとつ増えた！一緒に盛り上がってくれてありがとう！'],ISTJ:['今日のステージ、無事に終えられました。応援してくれた皆さんに感謝しています。','準備してきたことを届けられて嬉しかったです。次ももっと良いパフォーマンスを目指します。']};
 function social(i,s,g,phase){if(typeof idolXAdd!=='function')return;const start=IDOL_BOOKING.hour(s.time),end=start+Number(s.duration||0)/60;const recorded=Array.isArray(s.participatingMemberIds)?s.participatingMemberIds.map(String):null;const postingMembers=members(g).filter(m=>recorded&&phase!=='before'?recorded.includes(String(m.id)):(typeof IDOL_BOOKING==='undefined'||IDOL_BOOKING.participates(m,i.groupId,s.date,Math.max(0,start-1),end,'festival:'+s.id)));const hash=`#${i.festival.replace(/\s+/g,'')} #${i.groupName.replace(/\s+/g,'')}`;if(phase==='before'){const p=idolXAdd('group:'+g.id,g.name,typeof idolXHandleGroup==='function'?idolXHandleGroup(g):'@group',`明日は${i.festival}に出演します！${s.time}からのステージ、一緒に楽しみましょう！\n${hash}${typeof window.IR_X_PARTICIPATION_NOTICE==='function'?window.IR_X_PARTICIPATION_NOTICE(g,s.date,Math.max(0,IDOL_BOOKING.hour(s.time)-1),IDOL_BOOKING.hour(s.time)+Number(s.duration||0)/60,IDOL_BOOKING.hour(s.time)+Number(s.duration||0)/60,'festival:'+s.id):''}`);idolXAdd('agency',state.agency+' 公式','@agency','',null,p.id);for(const m of postingMembers)idolXAdd('member:'+m.id,m.stageName||m.name,typeof idolXHandleMember==='function'?idolXHandleMember(m,g):'@member','',null,p.id);return}for(const m of postingMembers){const mb=(m.mbti||'INTP').toUpperCase(),arr=templates[mb]||['今日のフェス、本当にありがとうございました！みんなの応援が力になりました。また一緒に素敵な時間を過ごそうね！','たくさんの方と会えて幸せな一日でした！ステージから見た景色を忘れません。'];idolXAdd('member:'+m.id,m.stageName||m.name,typeof idolXHandleMember==='function'?idolXHandleMember(m,g):'@member',pick(arr)+`\n${hash}`)}for(let j=0;j<R(2,5);j++)idolXAdd('fan:festival:'+j,`ファン${j+1}`,'@fan',pick([`${i.groupName}のライブすごく良かった！`,`${i.festival}で初めて見たけど気になった！`,`今日のステージの余韻がすごい！`,`またライブを見に行きたい！`])+` ${hash}`)}
