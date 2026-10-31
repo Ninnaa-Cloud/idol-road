@@ -148,7 +148,37 @@ function irDecompressSave(stored){
  return new TextDecoder().decode(result);
 }
 
-const KEY='idol-road-save-v1';const mainTabs=['ホーム','アイドル','活動','スケジュール','経営'];const subTabs={'アイドル':['オーディション','グループ'],'活動':['ライブ','イベント','音楽番組','バラエティ番組','ドラマ・映画'],'経営':['広報','経理','制作','チケット']};const defaults=()=>({agency:'',agencyFunds:50000000,year:2026,month:4,day:1,hours:12,tab:'ホーム',sub:'',notifications:[],criticalDates:[],schedule:[],applicantPhotoAssignments:{}});let state=defaults();window.__idolRoadSNSAccounts=()=>({agency:state.agency||"事務所",agencyReading:state.agencyReading||"",groups:(state.groups||[]).map(g=>({id:String(g.id??g.name),name:g.name||"グループ",reading:g.nameReading||""})),setReading:(id,reading)=>{if(id==="agency")state.agencyReading=reading;else{const g=(state.groups||[]).find(g=>"group:"+String(g.id??g.name)===id);if(g)g.nameReading=reading;}save();}});let openPanel='';let calendarView=null;const el=id=>document.getElementById(id);const pad=n=>String(n).padStart(2,'0');const dateObj=()=>new Date(state.year,state.month-1,state.day);const dateKey=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;const today=()=>dateKey(dateObj());function save(){localStorage.setItem(KEY,irCompressSave(JSON.stringify(state)))}function load(){try{const stored=localStorage.getItem(KEY);const s=stored?JSON.parse(irDecompressSave(stored)):null;if(s&&typeof s==='object'&&typeof s.agency==='string'&&Number.isInteger(s.year)&&Number.isInteger(s.month)&&Number.isInteger(s.day)&&Number.isFinite(s.hours)&&s.hours>=0&&s.hours<=12&&mainTabs.includes(s.tab)&&Array.isArray(s.notifications)&&Array.isArray(s.schedule)&&Array.isArray(s.criticalDates)){state={...defaults(),...s};return}}catch(e){}state=defaults()}
+const KEY='idol-road-save-v1';const mainTabs=['ホーム','アイドル','活動','スケジュール','経営'];const subTabs={'アイドル':['オーディション','グループ'],'活動':['ライブ','イベント','音楽番組','バラエティ番組','ドラマ・映画'],'経営':['広報','経理','制作','チケット']};const defaults=()=>({agency:'',agencyFunds:50000000,year:2026,month:4,day:1,hours:12,tab:'ホーム',sub:'',notifications:[],criticalDates:[],schedule:[],applicantPhotoAssignments:{}});let state=defaults();window.__idolRoadSNSAccounts=()=>({agency:state.agency||"事務所",agencyReading:state.agencyReading||"",groups:(state.groups||[]).map(g=>({id:String(g.id??g.name),name:g.name||"グループ",reading:g.nameReading||""})),setReading:(id,reading)=>{if(id==="agency")state.agencyReading=reading;else{const g=(state.groups||[]).find(g=>"group:"+String(g.id??g.name)===id);if(g)g.nameReading=reading;}save();}});let openPanel='';let calendarView=null;const el=id=>document.getElementById(id);const pad=n=>String(n).padStart(2,'0');const dateObj=()=>new Date(state.year,state.month-1,state.day);const dateKey=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;const today=()=>dateKey(dateObj());function save(){localStorage.setItem(KEY,irCompressSave(JSON.stringify(state)))}// Migrate old mechanically generated track titles already stored in saves.
+// This keeps track names, completion notifications and production emails consistent.
+function irRepairLegacySongTitles(st){
+ if(st.irSongTitleRepair167)return;
+ const pools={
+  'かわいい':['アネモネ','Baby Steps','ひとひら','Cider','キミと月曜日','Favorite','初恋前夜','Blueberry'],
+  'かっこいい':['Replica','夜明け前','Impulse','白と黒','Overtone','Re:Start','No Signal','逆光'],
+  '個性派':['404','余白','Nonfiction','回遊魚','Aquarium','逆さ時計','Echo','未確認']
+ };
+ const legacy=/^(?:不思議|きゅん|キュン|ミステリー|ラブ|恋|ハート|ドキドキ)[・･].{2,55}(?:の(?:扉|奇跡|調べ|物語|魔法|秘密|約束)|スターライト|パラダイス)$/;
+ const changes=new Map();let sequence=0;
+ for(const track of st.productions||[]){
+  const old=track&&track.title;
+  if(typeof old!=='string'||!legacy.test(old))continue;
+  if(!changes.has(old)){
+   const pool=pools[track.mood]||pools['個性派'];
+   const existing=new Set((st.productions||[]).map(x=>x.title));
+   const candidate=pool.find(t=>!existing.has(t)&&![...changes.values()].includes(t))||('Track '+String(++sequence).padStart(3,'0'));
+   changes.set(old,candidate);
+  }
+  track.title=changes.get(old);
+ }
+ if(changes.size){
+  const replace=(v)=>{if(typeof v!=='string')return v;for(const [a,b] of changes)v=v.split(a).join(b);return v;};
+  for(const n of st.notifications||[])if(n&&typeof n.text==='string')n.text=replace(n.text);
+  for(const m of st.mail||[])if(m){for(const key of ['subject','body'])if(typeof m[key]==='string')m[key]=replace(m[key]);}
+  if(Array.isArray(st.usedProductionNames))st.usedProductionNames=st.usedProductionNames.map(replace);
+ }
+ st.irSongTitleRepair167=true;
+}
+function load(){try{const stored=localStorage.getItem(KEY);const s=stored?JSON.parse(irDecompressSave(stored)):null;if(s&&typeof s==='object'&&typeof s.agency==='string'&&Number.isInteger(s.year)&&Number.isInteger(s.month)&&Number.isInteger(s.day)&&Number.isFinite(s.hours)&&s.hours>=0&&s.hours<=12&&mainTabs.includes(s.tab)&&Array.isArray(s.notifications)&&Array.isArray(s.schedule)&&Array.isArray(s.criticalDates)){state={...defaults(),...s};irRepairLegacySongTitles(state);return}}catch(e){}state=defaults()}
 function notice(msg){state.notifications.unshift({date:today(),text:msg,read:false});save();updateNotificationBadge()}function msg(s){el('status').textContent=s}// Keep the two historical representations of an external appearance in sync.
 // A verified completed performance in EITHER record counts as finished; a
 // mere accepted invitation or passed calendar date does not.
@@ -217,7 +247,8 @@ function drawHome(){
   b.className='ir-home-entry';b.onclick=()=>{
    const label=String(x.title||x.name||x.type||'');
    const kind=String(x.category||x.kind||x.type||'');
-   if(x.audition||/オーディション|審査|面接/.test(label+' '+kind)){state.tab='アイドル';state.sub='オーディション'}
+   if(x.dramaFilmId!=null||/【(?:撮影|ドラマ放送|映画公開)】/.test(label)){state.tab='活動';state.sub='ドラマ・映画'}
+   else if(x.audition||/オーディション|審査|面接/.test(label+' '+kind)){state.tab='アイドル';state.sub='オーディション'}
    else if(/全体レッスン|個人レッスン|面談|休養/.test(label+' '+kind)){state.tab='アイドル';state.sub='グループ'}
    else if(/楽曲|衣装|振付|制作/.test(label+' '+kind)){state.tab='経営';state.sub='制作'}
    else if(/チケット/.test(label+' '+kind)){state.tab='経営';state.sub='チケット'}
@@ -1156,7 +1187,7 @@ function renderLiveHost(){
    merch:type==='one'&&q('lhMerch').value==='yes',benefit:isRegular()?true:benefit,mode:type==='joint'?'single':q('lhMode').value,regularWeekday:isRegular()?Number(q('lhRegularWeek').value):null,regularActive:isRegular(),createdAt:today()};
   const requestedSlots=(tour?stops.map(x=>({date:x.date,time:x.time})):dates.map(d=>({date:d,time})));
   if(isRegular()&&requestedSlots.length){const cursor=new Date(requestedSlots[0].date+'T12:00:00');for(let k=1;k<12;k++){cursor.setDate(cursor.getDate()+7);requestedSlots.push({date:dateKey(cursor),time});}}
-  const requestedClashes=requestedSlots.flatMap(x=>IDOL_BOOKING.conflict({id:'live:inquiry:new',date:x.date,start:IDOL_BOOKING.hour(x.time),end:IDOL_BOOKING.hour(x.time)+(benefit?3:2),groupId:String(group.id),memberId:null}));
+  const requestedClashes=requestedSlots.flatMap(x=>IDOL_BOOKING.conflict({id:'live:inquiry:new',date:x.date,start:IDOL_BOOKING.liveWindow({time:x.time,pref:(tour?stops.find(z=>z.date===x.date)?.pref:q('lhPref').value),duration:3,benefit},0).start,end:IDOL_BOOKING.liveWindow({time:x.time,pref:(tour?stops.find(z=>z.date===x.date)?.pref:q('lhPref').value),duration:3,benefit},0).end,groupId:String(group.id),memberId:null}));
   if(!IDOL_BOOKING.warn(requestedClashes))return;
   if(!confirm(`${name}について会場へ利用可否を問い合わせますか？（ゲーム内メール）`))return;
   live.attendanceForecasts=dates.map((date,i)=>{
@@ -1813,7 +1844,7 @@ function extReply(id,accept){
  if(inv.status!=='pending'||today()>inv.deadline){alert('この出演依頼は回答期限切れ、または回答済みです。');return}
  if(accept){
   const groupForAge=(state.groups||[]).find(g=>String(g.id)===String(inv.groupId));const startHour=parseInt(String(inv.time||'18:00'),10);const endHour=startHour+Math.max(1,Number(inv.duration)||3);if(groupForAge&&!irAgeConfirm(groupForAge,inv.date,startHour,endHour))return;inv.ageExcludedIds=(groupForAge?.members||[]).filter(m=>irAgeRestricted(m,inv.date,startHour,endHour)).map(m=>String(m.id));
-  const clashes=IDOL_BOOKING.conflict({id:'live:'+inv.id,date:inv.date,start:IDOL_BOOKING.hour(inv.time),end:IDOL_BOOKING.hour(inv.time)+Math.max(1,Number(inv.duration)||3),groupId:String(inv.groupId),memberId:null});
+  const clashes=IDOL_BOOKING.conflict({id:'live:'+inv.id,date:inv.date,start:IDOL_BOOKING.liveWindow({...inv,benefit:true}).start,end:IDOL_BOOKING.liveWindow({...inv,benefit:true}).end,groupId:String(inv.groupId),memberId:null});
   if(!IDOL_BOOKING.warn(clashes))return;
   inv.status='accepted';state.hostedLives??=[];
   state.hostedLives.push({id:inv.id,name:inv.event,type:'external',merch:false,benefit:true,externalInviteId:inv.id,ageExcludedIds:inv.ageExcludedIds||[],groupId:inv.groupId,groupName:inv.groupName,dates:[inv.date],time:inv.time,venue:inv.venue,pref:inv.pref,capacity:inv.capacity,stops:[{date:inv.date,time:inv.time,venue:inv.venue,pref:inv.pref,capacity:inv.capacity}],attendanceForecasts:[],popularityProcessedDates:[inv.date]});
@@ -2045,7 +2076,7 @@ const showEnd=(x,i)=>showStart(x,i)+(x.graduationId?4:3); // Graduation performa
 const benefitEnd=(x,i)=>showEnd(x,i)+1; // Existing cheki session is 60 minutes.
 function travelMinutes(x,i){const pref=stopOf(x,i).pref||x.pref;return Object.prototype.hasOwnProperty.call(LIVE_TRAVEL_MINUTES,pref)?LIVE_TRAVEL_MINUTES[pref]:null;}
 function interval(x,i,stage){const start=showStart(x,i),mins=travelMinutes(x,i);if(stage==='travel')return mins===null?null:[start-mins/60,start];if(stage==='perform')return [start,showEnd(x,i)];if(stage==='benefit')return [start+3,start+4];return null;}
-function roster(x,i){const g=groupOf(x),date=dayOf(x,i),excluded=new Set([...(x.ageExcludedIds||[]),...((x.ageExcludedByDate||{})[date]||[])].map(String));return (g?.members||[]).filter(m=>!excluded.has(String(m.id))&&IDOL_BOOKING.participates(m,g.id,date,showStart(x,i),showEnd(x,i),'live:'+x.id));}
+function roster(x,i){const g=groupOf(x),date=dayOf(x,i),excluded=new Set([...(x.ageExcludedIds||[]),...((x.ageExcludedByDate||{})[date]||[])].map(String));return (g?.members||[]).filter(m=>!excluded.has(String(m.id))&&IDOL_BOOKING.participates(m,g.id,date,IDOL_BOOKING.liveWindow(x,i).start,IDOL_BOOKING.liveWindow(x,i).end,'live:'+x.id));}
 function irLiveStageEligible(x,i,stage,r){const period=interval(x,i,stage);if(!period)return [];const [start,end]=period,ms=roster(x,i);const previous=r?.participatingMemberIds;return ms.filter(m=>(!previous||previous.includes(String(m.id)))&&start>=0&&end<=24&&!irAgeRestricted(m,dayOf(x,i),start,end)&&irFixedTimeCanJoin(m,start,end));}
 function stageMembers(x,i,r){const ids=new Set((r?.participatingMemberIds||[]).map(String));return roster(x,i).filter(m=>ids.has(String(m.id)));}
 function spendStage(x,i,stage,r){const period=interval(x,i,stage),ms=irLiveStageEligible(x,i,stage,r);if(!period||!ms.length)return [];const [start,end]=period;for(const m of ms)if(!irFixedTimeCanJoin(m,start,end))return [];for(const m of ms)irFixedTimeSpend(m,start,end);r.participatingMemberIds=ms.map(m=>String(m.id));r.stageMemberIds??={};r.stageMemberIds[stage]=[...r.participatingMemberIds];return ms;}
@@ -2708,7 +2739,15 @@ function bExisting(g,m,birth){return bEvents().some(e=>String(e.groupId)===Strin
 const bStatus=e=>({booked:'予約済み',cancelled:'キャンセル',auto_cancelled:'自動中止',failed:'開催失敗',finished:'開催済み'})[e.status]||e.status;
 function bScore(e){const g=group(e.groupId),m=bMember(e);if(!g||!m)return 10;const others=g.members.filter(x=>String(x.id)!==String(m.id));const avg=others.length?others.reduce((n,x)=>n+bPop(x),0)/others.length:0;return Math.min(100,bPop(m)*.6+bFan(m)*.1+avg*.2+10)}
 function bPriceFactor(p){return p<=2000?1:p<=5000?.9:p<=10000?.75:p<=20000?.5:.25}
-function bPrediction(e){return Math.max(0,Math.round(bVenue(e.venueId).capacity*Math.max(0,(bScore(e)-10)/50)*bPriceFactor(e.price)))}
+function bAudienceDemand(g,m,price){
+ if(!g||!m)return 0;
+ const others=(g.members||[]).filter(x=>String(x.id)!==String(m.id));
+ const avg=others.length?others.reduce((n,x)=>n+bPop(x),0)/others.length:0;
+ const score=Math.max(0,Math.min(100,bPop(m)*.6+bFan(m)*.1+avg*.2+10));
+ // Demand is an absolute number of fans, NOT a percentage of venue capacity.
+ return Math.max(0,Math.round(3500*Math.pow(Math.max(0,(score-10)/90),2)*bPriceFactor(Number(price)||0)));
+}
+function bPrediction(e){const v=bVenue(e.venueId),g=group(e.groupId),m=bMember(e);return Math.min(Math.max(0,Number(v?.capacity)||0),bAudienceDemand(g,m,e.price))}
 function bMail(folder,subject,body,who,qid){mail(folder,subject,body,who,qid);if(folder==='inbox')updateMailBadge()}
 function bMotivate(e,delta){const m=bMember(e);if(m)m.motivationLevel=Math.max(0,Math.min(100,(Number(m.motivationLevel)||0)+delta))}
 function bStop(e,status,reason,penalty){if(e.status!=='booked')return;e.status=status;e.cancelReason=reason;if(e.salesStarted&&e.revenue>0&&!e.refunded){state.agencyFunds=funds()-e.revenue;window.IDOL_ACCOUNTING?.record(-e.revenue,e.groupId,e.memberId,'benefit','生誕祭 チケット返金');e.refundTotal=e.revenue;e.refunded=true;e.revenue=0;}if(penalty)bMotivate(e,-(penalty[0]+Math.floor(Math.random()*(penalty[1]-penalty[0]+1))));notice(`${e.memberName} 生誕祭：${reason}。${e.refundTotal?'チケット代金を全額返金しました。':''}`);save()}
@@ -2771,7 +2810,7 @@ let bTab='new',bExpanded=null;
 function bRender(){const root=document.getElementById('content');if(!root)return;const groups=state.groups||[];let h=bTodaySchedule()+`<h3>生誕祭</h3><div class="ir-tabs"><button data-btab="new">会場問い合わせ</button><button data-btab="upcoming">生誕祭予定</button><button data-btab="history">開催履歴</button></div><p class="ir-muted">東京都内・定員1,000人以下／開催3時間／会場予約後は日時変更不可</p>`;
 if(bTab==='new'){h+=`<div class="ir-card"><h3>会場への問い合わせ</h3><div class="ir-grid"><label>グループ<select id="bd-group">${groups.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select></label><label>主役メンバー<select id="bd-member"></select></label><label>開催希望日<input id="bd-date" type="date" min="${day()}" value="${datePlus(day(),30)}"></label><label>開始時刻<select id="bd-start">${Array.from({length:9},(_,i)=>`<option value="${i+10}">${i+10}:00〜${i+13}:00</option>`).join('')}</select></label><label>東京都内の会場<select id="bd-venue">${BD_VENUES.map(v=>`<option value="${v.id}">${esc(v.name)}（${v.capacity}人／${money(v.fee)}）</option>`).join('')}</select></label></div><p class="ir-muted" id="bd-forecast-note" aria-live="polite"></p><p class="ir-muted">誕生日の3か月前から問い合わせ可能。開催日は誕生日の前後1か月以内。会場から1〜2日後にメール返信が届きます。</p><button id="bd-inquire">問い合わせを送る</button></div>`;}
 else{const history=bTab==='history',events=bEvents().filter(e=>history?e.status!=='booked':e.status==='booked').sort((a,b)=>history?b.date.localeCompare(a.date):a.date.localeCompare(b.date));h+=events.length?'':'<p>該当する生誕祭はありません。</p>';for(const e of events){const v=bVenue(e.venueId),expanded=bExpanded===e.id,daysLeft=days(day(),e.date),m=bMember(e),costumes=m?bCostumes(e.groupId,m):[];h+=`<div class="ir-card" data-ticket-group="${esc(String(e.groupId))}"><b>${esc(e.date)} ${e.start}:00〜${e.start+3}:00｜${esc(e.memberName)} 生誕祭</b><p>${esc(v?.name||'')}（${v?.capacity||0}人）｜${bStatus(e)}</p><button data-bdetail="${esc(e.id)}">${expanded?'閉じる':'詳細を開く'}</button>`;if(expanded){h+=`<p>会場費 ${money(e.fee)}（支払済）｜交通費 ${money(e.travelCost||0)}</p>`;if(e.status==='booked'){h+=`<label>衣装（開催前日まで変更可能）<select data-bcostume="${esc(e.id)}"><option value="">自動選択（未選択）</option>${costumes.map(j=>`<option value="${esc(j.id)}" ${e.costumeId===j.id?'selected':''}>${esc(bCostumeName(j))}</option>`).join('')}</select></label>${!costumes.length?'<p class="ir-warn">所有する制作済み衣装がありません。衣装制作が必要です。衣装がない場合は開催できません。</p>':''}`;h+=`<p>チケット販売設定・販売状況の確認は「経営 → チケット → チケット販売欄」で行えます。</p>`;if(daysLeft>=1)h+=`<button data-bcancel="${e.id}">キャンセル</button>`;}else{h+=`<p>${esc(e.cancelReason||'')} ${e.refundTotal?'｜返金 '+money(e.refundTotal):''}</p>`;if(e.status==='finished')h+=`<button data-breport="${e.id}">結果レポートを見る</button>`}h+='</div>'}h+='</div>'}}
-root.className='';root.innerHTML=h;root.querySelectorAll('[data-btab]').forEach(x=>x.onclick=()=>{bTab=x.dataset.btab;bExpanded=null;bRender()});root.querySelectorAll('[data-bdetail]').forEach(x=>x.onclick=()=>{bExpanded=bExpanded===x.dataset.bdetail?null:x.dataset.bdetail;bRender()});root.querySelectorAll('[data-bsell]').forEach(x=>x.onclick=()=>bStartSales(bEvents().find(e=>e.id===x.dataset.bsell)));root.querySelectorAll('[data-bcancel]').forEach(x=>x.onclick=()=>bCancel(bEvents().find(e=>e.id===x.dataset.bcancel)));root.querySelectorAll('[data-btravel]').forEach(x=>x.onclick=()=>bTravel(bEvents().find(e=>e.id===x.dataset.btravel)));root.querySelectorAll('[data-bperform]').forEach(x=>x.onclick=()=>{const eventId=String(x.getAttribute('data-bperform')||'');const event=bEvents().find(e=>String(e.id)===eventId);bPerform(event)});root.querySelectorAll('[data-breport]').forEach(x=>x.onclick=()=>bReport(bEvents().find(e=>e.id===x.dataset.breport)));root.querySelectorAll('[data-bcostume]').forEach(x=>{x.disabled=days(day(),bEvents().find(e=>e.id===x.dataset.bcostume).date)<1;x.onchange=()=>{const e=bEvents().find(e=>e.id===x.dataset.bcostume);e.costumeId=x.value||null;e.costumeAuto=false;save()}});const gsel=root.querySelector('#bd-group'),msel=root.querySelector('#bd-member');if(gsel){const fill=()=>{const g=group(gsel.value);msel.innerHTML=(g?.members||[]).map(m=>`<option value="${esc(m.id)}">${esc(bName(m))}（誕生日 ${esc(m.birthDate||'未設定')}）</option>`).join('')};const updateForecast=()=>{const note=root.querySelector('#bd-forecast-note'),g=group(gsel.value),m=g?.members?.find(x=>String(x.id)===String(msel.value)),v=bVenue(root.querySelector('#bd-venue')?.value);if(!note)return;if(!g||!m||!v){note.textContent='備考：予想動員人数を計算できません。';return}const others=g.members.filter(x=>String(x.id)!==String(m.id)),avg=others.length?others.reduce((n,x)=>n+bPop(x),0)/others.length:0,score=Math.min(100,bPop(m)*.6+bFan(m)*.1+avg*.2+10),expected=Math.max(0,Math.round(v.capacity*Math.max(0,(score-10)/50)));note.textContent='備考：予想動員人数 約'+expected.toLocaleString()+'人（チケット価格未設定のため価格補正前の予測／会場定員 '+v.capacity.toLocaleString()+'人）'};gsel.onchange=()=>{fill();updateForecast()};msel.onchange=updateForecast;root.querySelector('#bd-venue').onchange=updateForecast;fill();updateForecast();root.querySelector('#bd-inquire').onclick=bInquire}}
+root.className='';root.innerHTML=h;root.querySelectorAll('[data-btab]').forEach(x=>x.onclick=()=>{bTab=x.dataset.btab;bExpanded=null;bRender()});root.querySelectorAll('[data-bdetail]').forEach(x=>x.onclick=()=>{bExpanded=bExpanded===x.dataset.bdetail?null:x.dataset.bdetail;bRender()});root.querySelectorAll('[data-bsell]').forEach(x=>x.onclick=()=>bStartSales(bEvents().find(e=>e.id===x.dataset.bsell)));root.querySelectorAll('[data-bcancel]').forEach(x=>x.onclick=()=>bCancel(bEvents().find(e=>e.id===x.dataset.bcancel)));root.querySelectorAll('[data-btravel]').forEach(x=>x.onclick=()=>bTravel(bEvents().find(e=>e.id===x.dataset.btravel)));root.querySelectorAll('[data-bperform]').forEach(x=>x.onclick=()=>{const eventId=String(x.getAttribute('data-bperform')||'');const event=bEvents().find(e=>String(e.id)===eventId);bPerform(event)});root.querySelectorAll('[data-breport]').forEach(x=>x.onclick=()=>bReport(bEvents().find(e=>e.id===x.dataset.breport)));root.querySelectorAll('[data-bcostume]').forEach(x=>{x.disabled=days(day(),bEvents().find(e=>e.id===x.dataset.bcostume).date)<1;x.onchange=()=>{const e=bEvents().find(e=>e.id===x.dataset.bcostume);e.costumeId=x.value||null;e.costumeAuto=false;save()}});const gsel=root.querySelector('#bd-group'),msel=root.querySelector('#bd-member');if(gsel){const fill=()=>{const g=group(gsel.value);msel.innerHTML=(g?.members||[]).map(m=>`<option value="${esc(m.id)}">${esc(bName(m))}（誕生日 ${esc(m.birthDate||'未設定')}）</option>`).join('')};const updateForecast=()=>{const note=root.querySelector('#bd-forecast-note'),g=group(gsel.value),m=g?.members?.find(x=>String(x.id)===String(msel.value)),v=bVenue(root.querySelector('#bd-venue')?.value);if(!note)return;if(!g||!m||!v){note.textContent='備考：予想動員人数を計算できません。';return}const others=g.members.filter(x=>String(x.id)!==String(m.id)),avg=others.length?others.reduce((n,x)=>n+bPop(x),0)/others.length:0,score=Math.min(100,bPop(m)*.6+bFan(m)*.1+avg*.2+10),expected=Math.min(v.capacity,bAudienceDemand(g,m,0));note.textContent='備考：予想動員人数 約'+expected.toLocaleString()+'人（チケット価格未設定のため価格補正前の予測／会場定員 '+v.capacity.toLocaleString()+'人）'};gsel.onchange=()=>{fill();updateForecast()};msel.onchange=updateForecast;root.querySelector('#bd-venue').onchange=updateForecast;fill();updateForecast();root.querySelector('#bd-inquire').onclick=bInquire}}
 let bTicketExpanded=null;
 function bTicketRender(){
  const root=document.getElementById('content');if(!root)return;
@@ -3205,6 +3244,16 @@ window.__idolRoadXCommunity=()=>{xCommunityDaily();return xCommunity().posts};wi
 /* Shared booking priority engine: group/group latest wins; solo/group solo wins;
    solo/solo latest wins. Release/broadcast entries are not attendance bookings. */
 window.IDOL_BOOKING={
+ hour(v){const m=String(v??'').match(/^(\d{1,2})(?::(\d{2}))?/);return m?Number(m[1])+Number(m[2]||0)/60:Number(v)||0;},
+ liveWindow(l,i=0){
+  const stop=l.stops?.[i]||l;
+  const start=this.hour(stop.time||l.time||'18:00');
+  const pref=stop.pref||l.pref;
+  const travel=typeof LIVE_TRAVEL_MINUTES!=='undefined'&&Number.isFinite(Number(LIVE_TRAVEL_MINUTES[pref]))?Number(LIVE_TRAVEL_MINUTES[pref])/60:0;
+  const show=Number(l.duration)>0?Number(l.duration):(l.graduationId?4:3);
+  const benefit=l.benefit||l.type==='joint'||l.type==='external';
+  return {start:start-travel,end:start+show+(benefit?1:0)+travel};
+ },
  list(){const out=[];const st=state||{};const add=(id,date,start,end,groupId,memberId,title,kind,order)=>{if(!date||!groupId)return;out.push({id:String(id),date:String(date),start:Number(start??0),end:Number(end??24),groupId:String(groupId),memberId:memberId==null?null:String(memberId),title:String(title||''),kind,order:Number(order||0)});};
  const time=x=>{const a=String(x||'').match(/(\d{1,2}):?(\d{2})?\s*[-〜～]\s*(\d{1,2}):?(\d{2})?/);return a?[+a[1]+(+a[2]||0)/60,+a[3]+(+a[4]||0)/60]:[0,24]};
  for(const r of st.musicTV||[])if(['accepted','recorded','broadcasted'].includes(r.status)&&r.kind!=='feature'){const d=r.recordDate||r.broadcastDate;const [a,b]=time(r.slot);add('music:'+r.id,d,a,b,r.groupId,null,r.name,'music',r.bookingOrder||0)}
@@ -3212,12 +3261,24 @@ window.IDOL_BOOKING={
  for(const r of st.dramaFilmWorks||[])if(['accepted','shooting','completed'].includes(r.status))for(const x of r.slots||[])if(!x.done)add('drama:'+r.id+':'+x.date,x.date,x.start,x.end,r.groupId,r.memberId,r.title,'drama',r.bookingOrder||0);
  for(const r of st.birthdayEvents||[])if(r.status==='booked'||r.status==='finished')add('birthday:'+r.id,r.date,Number(r.start??10),Number(r.start??10)+3,r.groupId,null,r.memberName+' 生誕祭','birthday',r.bookingOrder||0);
  for(const r of st.handshakeEvents||[])if(r.status==='booked'||r.status==='finished')add('event:'+r.id,r.date,10,18,r.groupId,null,r.type||'イベント','event',r.bookingOrder||0);
- for(const r of st.hostedLives||[])if(!['cancelled','canceled','rejected'].includes(r.status)){const dates=[r.date,r.eventDate,r.liveDate].filter(Boolean);for(const d of dates)add('live:'+r.id,d,r.startHour??r.start??0,r.endHour??r.end??24,r.groupId,null,r.title||r.name,'live',r.bookingOrder||0)}
+ for(const r of st.hostedLives||[])if(!['cancelled','canceled','rejected'].includes(r.status)){
+ const dates=Array.isArray(r.dates)&&r.dates.length?r.dates:[r.date||r.eventDate||r.liveDate].filter(Boolean);
+ for(let i=0;i<dates.length;i++){
+  const d=dates[i],w=this.liveWindow(r,i),base=new Date(d+'T12:00:00');
+  for(let shift=-1;shift<=1;shift++){
+   const segStart=Math.max(0,w.start-shift*24),segEnd=Math.min(24,w.end-shift*24);
+   if(segStart>=segEnd)continue;
+   const day=new Date(base);day.setDate(day.getDate()+shift);
+   const key=day.getFullYear()+'-'+String(day.getMonth()+1).padStart(2,'0')+'-'+String(day.getDate()).padStart(2,'0');
+   add('live:'+r.id+':'+d,key,segStart,segEnd,r.groupId,null,r.title||r.name||'ライブ','live',r.bookingOrder||0);
+  }
+ }
+ }
  return out;},
  conflict(candidate){return this.list().filter(x=>x.id!==candidate.id&&x.date===candidate.date&&x.groupId===String(candidate.groupId)&&x.start<candidate.end&&candidate.start<x.end&&(candidate.memberId===null||x.memberId===null||x.memberId===String(candidate.memberId)));},
  warn(items){if(!items.length)return true;return confirm('⚠ スケジュールが重複しています。\n'+items.slice(0,12).map(x=>x.date+' '+x.title).join('\n')+'\n\n後から決まった予定を優先します。ただし個人活動はグループ活動より優先されます。\nこのまま承諾・問い合わせを続けますか？');},
  order(){state.bookingSerial=(Number(state.bookingSerial)||0)+1;return state.bookingSerial;},
- participates(member,groupId,date,start=0,end=24,bookingId=null){if(member&&typeof member==='object'&&(member.idolRoadDismissed||member.activityStatus==='活動休止'||member.idolRoadPauseUntil))return false;const mid=String(member?.id??member),gid=String(groupId);const all=this.list().filter(x=>x.date===date&&x.groupId===gid&&x.start<end&&start<x.end&&(x.memberId===null||x.memberId===mid));const own=all.find(x=>x.id===bookingId);if(!own)return !all.some(x=>x.memberId!==null);return !all.some(x=>x.id!==own.id&&(x.memberId!==null&&own.memberId===null||x.memberId===own.memberId&&x.order>own.order||x.memberId===null&&own.memberId===null&&x.order>own.order));}
+ participates(member,groupId,date,start=0,end=24,bookingId=null){if(member&&typeof member==='object'&&(member.idolRoadDismissed||member.activityStatus==='活動休止'||member.idolRoadPauseUntil))return false;const mid=String(member?.id??member),gid=String(groupId);const all=this.list().filter(x=>x.date===date&&x.groupId===gid&&x.start<end&&start<x.end&&(x.memberId===null||x.memberId===mid));const own=all.find(x=>(x.id===bookingId||x.id.startsWith(String(bookingId)+':')));if(!own)return !all.some(x=>x.memberId!==null);return !all.some(x=>x.id!==own.id&&(x.memberId!==null&&own.memberId===null||x.memberId===own.memberId&&x.order>own.order||x.memberId===null&&own.memberId===null&&x.order>own.order));}
 };
 </script>
 <script>
@@ -3844,7 +3905,7 @@ function context(w){const g=(state.groups||[]).find(x=>String(x.id)===String(w.g
 function fans(w,g,m,phase,ref){const d=database(),key=String(g.id),pool=d.fans[key]??(d.fans[key]=[]);const follower=Number(state.idolXFollowers?.['member:'+m.id]||0),fame=Number(g.fame||0),n=irXReactionScale(g,m);const used=new Set();for(let i=0;i<n;i++){if(!pool.length||Math.random()<.14){const j=d.serial++,names=['りん','みさき','ゆき','もち','あお','ねむ','現場好き','しろ','おもち','ゆう','あや','映画好き','ドラマ好き','限界オタク','はる'];pool.push({id:`dramafan_${key}_${j}`,name:names[j%names.length]+(j>=names.length?Math.floor(j/names.length)+1:''),handle:`@dramafan_${key}_${j}`,oshi:Math.random()<.8?m.id:(g.members||[])[j%g.members.length]?.id});}const focused=pool.filter(f=>String(f.oshi)===String(m.id));const f=choose(Math.random()<.82&&focused.length?focused:pool);let available=FAN[phase].filter(x=>!used.has(x));if(!available.length)available=FAN[phase];const msg=choose(available);used.add(msg);const p=add('fan:'+f.id,f.name,f.handle,msg+(Math.random()<.4?' '+hashtag(w.title):''));p.dramaFilmId=w.id;p.dramaFilmPhase=phase;if(ref){if(i<Math.min(10,Math.ceil(n*.3)))p.quoteOf=ref.id;else if(i<Math.min(20,Math.ceil(n*.7)))p.replyTo=ref.id;}}if(ref){ref.comments=Math.max(ref.comments||0,Math.min(20,Math.ceil(n*.4)));ref.quotes=Math.max(ref.quotes||0,Math.min(10,Math.ceil(n*.3)));ref.likes=Math.max(ref.likes||0,n*5);ref.reposts=Math.max(ref.reposts||0,n*2);}}
 function official(w,g,m,phase,episode){const film=w.type==='film',when=film?(phase==='month'?'公開まであと1か月となりました！🎉':'いよいよ本日公開です！🎉'):`明日は第${episode}話の放送です！`,intro=film?(phase==='month'?'🎬 映画出演情報 🎬':'🎬 本日公開 🎬'):'📺 ドラマ出演情報 📺',body=film?`${intro}\n\n${memberName(m)}が出演する映画『${w.title}』✨\n${when}\n\n🗓 ${displayDate(w.release)}公開\n\nぜひ劇場でチェックしてください🍿💕\n\n${hashtag(w.title)} ${hashtag(memberName(m))}`:`${intro}\n\n${memberName(m)}が出演するドラマ『${w.title}』✨\n${when}\n\n🗓 ${displayDate(shift(w.release,(episode-1)*7))}\n\nぜひチェックしてください💕\n\n${hashtag(w.title)} ${hashtag(memberName(m))}`;const p=add('group:'+g.id,g.name,idolXHandleGroup(g),body.replace(/\\n/g,'\n'));add('agency',(state.agency||'事務所')+' 公式','@'+(idolXRomanPart(state.agencyReading||state.agency)||'agency')+'_official','',p.id);add('member:'+m.id,memberName(m),m.xHandle||idolXHandleMember(m,g),'',p.id);fans(w,g,m,film?(phase==='month'?'filmMonth':'filmDay'):(episode===w.episodes?'finalBefore':'dramaBefore'),p);}
 function memberPost(w,g,m,episode){const film=w.type==='film',final=!film&&episode===w.episodes,mb=String(m.mbti||m.MBTI||'ISFP').toUpperCase(),set=film?FILM:final?FINAL:STYLE,txt=choose(set[mb]||set.ISFP),title=film?`本日、出演映画『${w.title}』が公開されます！`:`今日はドラマ『${w.title}』${final?'最終話':`第${episode}話`}の放送日です！`,p=add('member:'+m.id,memberName(m),m.xHandle||idolXHandleMember(m,g),`${title}\n${txt}\n\n${hashtag(w.title)} ${hashtag(memberName(m))}`.replace(/\\n/g,'\n'));fans(w,g,m,film?'filmDay':final?'finalDay':'dramaDay',p);}
-function scan(){const d=database(),now=date();for(const w of state.dramaFilmWorks||[]){if(!w?.id||!w.release||!['completed','released','broadcasted'].includes(w.status))continue;const ctx=context(w);if(!ctx)continue;const {g,m}=ctx;const once=(phase,fn)=>{const key=w.id+':'+phase;if(d.keys[key])return;d.keys[key]=true;try{fn();}catch(e){delete d.keys[key];throw e;}};if(w.type==='film'){if(now===monthBefore(w.release))once('month',()=>official(w,g,m,'month'));if(now===w.release){once('filmOfficial',()=>official(w,g,m,'day'));once('filmMember',()=>memberPost(w,g,m,1));const spent=Math.max(0,12-Number(state.hours??12));if(spent>=2)once('filmWatch',()=>fans(w,g,m,'filmWatch'));}}else{for(let ep=1;ep<=Number(w.episodes||0);ep++){const air=shift(w.release,(ep-1)*7);if(now===shift(air,-1))once('before'+ep,()=>official(w,g,m,'before',ep));if(now===air){once('day'+ep,()=>memberPost(w,g,m,ep));const spent=Math.max(0,12-Number(state.hours??12));if(spent>=1)once('watch1_'+ep,()=>fans(w,g,m,'dramaWatch1'));if(spent>=3)once('watch2_'+ep,()=>fans(w,g,m,'dramaWatch2'));if(spent>=5)once('watch3_'+ep,()=>fans(w,g,m,'dramaWatch3'));}}}}}
+function scan(){const d=database(),now=date();for(const w of state.dramaFilmWorks||[]){if(!w?.id||!w.release||!['accepted','shooting','completed','released','broadcasted'].includes(w.status))continue;const ctx=context(w);if(!ctx)continue;const {g,m}=ctx;const once=(phase,fn)=>{const key=w.id+':'+phase;if(d.keys[key])return;d.keys[key]=true;try{fn();}catch(e){delete d.keys[key];throw e;}};if(w.type==='film'){if(now===monthBefore(w.release))once('month',()=>official(w,g,m,'month'));if(now===w.release){once('filmOfficial',()=>official(w,g,m,'day'));once('filmMember',()=>memberPost(w,g,m,1));const spent=Math.max(0,12-Number(state.hours??12));if(spent>=2)once('filmWatch',()=>fans(w,g,m,'filmWatch'));}}else{for(let ep=1;ep<=Number(w.episodes||0);ep++){const air=shift(w.release,(ep-1)*7);if(now===shift(air,-1))once('before'+ep,()=>official(w,g,m,'before',ep));if(now===air){once('day'+ep,()=>memberPost(w,g,m,ep));const spent=Math.max(0,12-Number(state.hours??12));if(spent>=1)once('watch1_'+ep,()=>fans(w,g,m,'dramaWatch1'));if(spent>=3)once('watch2_'+ep,()=>fans(w,g,m,'dramaWatch2'));if(spent>=5)once('watch3_'+ep,()=>fans(w,g,m,'dramaWatch3'));}}}}}
 let busy=false;function check(){if(busy)return;busy=true;try{scan()}catch(e){console.warn('Drama Film X:',e)}finally{busy=false}}
 const oldRender=render;render=function(...args){check();return oldRender.apply(this,args)};
 const oldSave=save;save=function(...args){check();return oldSave.apply(this,args)};
@@ -5364,6 +5425,13 @@ function irXScandalReactionScale(g){
   function label(e){return String(e.title||e.name||e.eventName||e.type||'イベント').trim()}
   function reconcile(){
     if(!state.agency)return;
+    // Filming / studio recording is production work, not an audience event.
+    // Remove only historical auto-generated community reactions tied to filming schedule keys.
+    const community=db();
+    const filmingKeys=new Set((state.schedule||[]).filter(e=>e&&/^【(?:撮影|収録)】/.test(String(e.title||e.name||''))).map(e=>'schedule:'+String(e.id||e.date+':'+String(e.title||e.name||''))));
+    const isFilmingKey=k=>{const key=String(k||'');return /^schedule:/.test(key)&&(/【(?:撮影|収録)】/.test(key)||[...filmingKeys].some(prefix=>key===prefix+':done'||key===prefix+':general'||key.startsWith(prefix+':done:')||key.startsWith(prefix+':general:')));};
+    community.posts=(community.posts||[]).filter(p=>!isFilmingKey(p?.eventKey));
+    for(const k of Object.keys(community.eventKeys||{}))if(isFilmingKey(k))delete community.eventKeys[k];
     const now=day();
     // The former /500 attendance and /2000 popularity thresholds were unapproved.
     // Reuse the existing game's fame-based fan-volume rule, capped by the agreed 20 independent posts.
@@ -5384,6 +5452,9 @@ function irXScandalReactionScale(g){
     const schedules=(state.schedule||[]).filter(e=>e&&e.date===now);
     for(const e of schedules){
       const name=label(e),key='schedule:'+String(e.id||e.date+':'+name);
+      // Do not create public audience reactions on a drama/film filming or studio-recording day.
+      if(e.dramaFilmId&&/【(?:撮影|収録)】/.test(name))continue;
+      if(/^【(?:撮影|収録)】/.test(name))continue;
       if(e.done||e.completed||e.status==='finished'||e.status==='completed'){
         push(key+':done',/フェス/.test(name)?name+'のステージ、セトリも盛り上がりも最高だった！':/握手|写真/.test(name)?name+'で直接会えたのがまだ夢みたい。':/ライブ|公演/.test(name)?name+'終演！今日の歌とダンスが忘れられない。':'今日の'+name+'、参加できてよかった！','fan');
         push(key+':general','今日の'+name+'が話題になってる。ちょっと気になる。','general');
