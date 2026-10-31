@@ -1937,7 +1937,7 @@ function extSettle(){
   const g=(state.groups||[]).find(x=>String(x.id)===String(inv.groupId));
   const forecast=g?livePredictAttendance(g,inv.pref,inv.capacity,inv.date):0;
   const others=Math.min(inv.capacity,Math.round(inv.capacity*(.15+Math.random()*.65)));
-  const own=Math.min(Math.max(0,inv.capacity-others),Math.round(forecast*.15*(.8+Math.random()*.4)));
+  const own=Math.min(irExternalOwnAudienceCap(inv,inv.capacity),Math.max(0,inv.capacity-others),Math.round(forecast*.15*(.8+Math.random()*.4)));
   const total=own+others;
   const amount=inv.type===0?(own<inv.quota?-(inv.quota-own)*inv.ticket:(own-inv.quota)*inv.ticket*inv.rate/100):inv.type===1?own*inv.ticket*inv.rate/100:inv.type===2?inv.fixed:0;
   const travel=liveEstimate(inv.pref,inv.capacity,1,Array.isArray(g?.members)?g.members.length:0,'external');
@@ -2244,16 +2244,28 @@ function irReconcileFinishedSoloReport(x,i,r){
  r.financial.net=(Number(r.financial.net)||0)+(sale.revenue-oldRevenue);
  save();return true;
 }
+function irExternalOwnAudienceCap(x,capacity){
+ const cap=Math.max(0,Math.round(Number(capacity)||0));
+ const otherCount=Array.isArray(x?.others)?x.others.length:2;
+ // Even with exceptional current popularity, other groups must retain audience space.
+ // A larger lineup distributes the room among more performers.
+ const maxShare=otherCount>=5?.35:otherCount>=3?.4:.45;
+ return Math.max(0,Math.min(cap,Math.floor(cap*maxShare)));
+}
 function irLiveActualAtShow(x,i){
  const stop=stopOf(x,i),g=groupOf(x),capacity=Math.max(0,Number(stop.capacity||x.capacity)||0);
  const day=dayOf(x,i),pref=stop.pref||x.pref;
  const current=livePredictAttendance(g,pref,capacity,day);
+ // At a multi-group external show, venue capacity includes other performers' fans.
+ // Keep the current-day demand calculation, but never attribute the entire room to one group.
+ const jointShareCap=isExternal(x)?irExternalOwnAudienceCap(x,capacity):capacity;
  // Preserve the existing price sensitivity for ticketed self-hosted concerts.
  const sale=state.hostedLiveTickets?.[String(x.id)+'::'+String(day)];
  const price=Number(sale?.price)||2000;
  const demand=Math.max(0,Math.min(capacity,Math.round(current*(isExternal(x)?1:irLivePriceMultiplier(price)))));
  let actual=liveDrawAttendance(demand,capacity);
  if(window.IDOL_ROAD_SCANDAL_EFFECTS)actual=window.IDOL_ROAD_SCANDAL_EFFECTS.attendance(x.groupId,day,actual);
+ actual=Math.min(actual,jointShareCap);
  if(!isExternal(x)){
   // Never admit more people than confirmed paid tickets for our hosted event.
   const sold=Number(sale?.sold);
