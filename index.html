@@ -6483,7 +6483,7 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
    const slots=[];
    const put=(id,gid,mid,date,start,end,title)=>{
      if(mid==null||!date||!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return;
-     slots.push({id:'irsolo:'+id,groupId:String(gid),memberId:String(mid),date:String(date),start:Math.max(0,start),end:Math.min(24,end),kind:'ir-solo-priority',title});
+     slots.push({id:String(id),groupId:String(gid),memberId:String(mid),date:String(date),start:Math.max(0,start),end:Math.min(24,end),kind:'ir-solo-priority',title});
    };
    for(const x of state.varietyTV||[]){
      if(!active(x)||x.mode!=='solo'||!x.memberId||!['accepted','recorded','broadcasted'].includes(x.status))continue;
@@ -6504,7 +6504,7 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  book.participates=function(m,gid,date,start=0,end=24,bookingId=null){
    if(!oldParticipates(m,gid,date,start,end,bookingId))return false;
    const id=String(m?.id??m);
-   return !soloSlots().some(x=>x.groupId===String(gid)&&x.memberId===id&&x.date===date&&x.start<end&&start<x.end);
+   return !soloSlots().some(x=>x.groupId===String(gid)&&x.memberId===id&&x.date===date&&x.start<end&&start<x.end&&!(bookingId!=null&&(x.id===String(bookingId)||x.id.startsWith(String(bookingId)+':'))));
  };
  window.IR_SOLO_PRIORITY_V183={soloSlots};
 })();
