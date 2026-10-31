@@ -2111,7 +2111,9 @@ function condition(t){return t.kind==='quota'?`チケットノルマ${t.quota}�
 function send(l,name,t){init();if(l.dates[0]<=today())return alert('開催日が近すぎるため招待できません。');if(active(l).length>=7)return alert('自社を含めて8組が上限です。');if(active(l).some(i=>i.groupName===name))return alert('このグループには招待済みです。');const c=state.jointContacts[name];if(!c)return;const prob=chance(c,l,t),yes=Math.random()*100<prob;const id='jointinvite_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);const inv={id,liveId:l.id,groupName:name,status:'pending',terms:t,probability:prob,willAccept:yes,sent:today(),replyDate:liveInquiryDue(today(),1+Math.floor(Math.random()*2)),deadline:liveInquiryDue(today(),2),order:invitations(l).length};state.jointInvitations.push(inv);c.lastInvite=today();const office=liveInquiryOffice();const body=`${name} 担当者様\n\nお世話になります。\n${office}です。\n\n${l.dates[0]}に、主催対バンを開催予定です。\nその際、ぜひ${name}様に出演をお願いしたくご連絡致しました。\n\n詳細は下記の通りです。\n開催日時：${l.dates[0]} ${l.time}\n会場名：${l.venue}\n出演グループ：${[l.groupName,...confirmed(l).map(i=>i.groupName)].join('、')}\n条件：${condition(t)}\n\nご確認の上、2日後までにご回答よろしくお願いします。\n\n${office}`;liveInquiryMail('sent','【対バン出演のご依頼】'+l.name,office,name,body,{jointInviteId:id});save();renderLiveHost();}
 function settleTickets(l,guestList,attendance){
  const price=Number(l.jointTicketPrice||3000),capacity=Number(l.capacity)||0;
- const ownForecast=Math.max(0,Number(l.jointOwnForecast??l.attendanceForecasts?.[0]?.predicted)||0);
+ // Settlement uses current demand for the host group's share; original invitation estimate stays unchanged in the UI.
+ const host=(state.groups||[]).find(g=>String(g.id)===String(l.groupId));
+ const ownForecast=Math.max(0,host?livePredictAttendance(host,l.pref||l.stops?.[0]?.pref,Number(l.capacity)||0,l.dates?.[0]):Number(l.jointOwnForecast??l.attendanceForecasts?.[0]?.predicted)||0);
  const ranks={F:5,E:15,D:40,C:100,B:250,A:600,S:1500,SS:3000};
  const weights=[ownForecast,...guestList.map(i=>(ranks[state.jointContacts?.[i.groupName]?.rank]||5)*.8)];
  const sum=weights.reduce((a,b)=>a+b,0);
@@ -2191,13 +2193,30 @@ function stageMembers(x,i,r){const ids=new Set((r?.participatingMemberIds||[]).m
 function spendStage(x,i,stage,r){const period=interval(x,i,stage),ms=irLiveStageEligible(x,i,stage,r);if(!period||!ms.length)return [];const [start,end]=period;for(const m of ms)if(!irFixedTimeCanJoin(m,start,end))return [];for(const m of ms)irFixedTimeSpend(m,start,end);r.participatingMemberIds=ms.map(m=>String(m.id));r.stageMemberIds??={};r.stageMemberIds[stage]=[...r.participatingMemberIds];return ms;}
 function stageWarning(x,i,stage,r){const period=interval(x,i,stage);if(!period)return '移動時間を取得できません。';if(period[0]<0||period[1]>24)return '活動時間が当日の0:00〜24:00を超えています。';const eligibleIds=new Set(irLiveStageEligible(x,i,stage,r).map(m=>String(m.id))),previous=r?.participatingMemberIds,all=roster(x,i).filter(m=>!previous||previous.includes(String(m.id)));const missing=all.filter(m=>!eligibleIds.has(String(m.id)));if(!eligibleIds.size)return 'この段階に参加できるメンバーがいません。';return missing.length?'次のメンバーは年齢制限または時間不足で不参加になります：'+missing.map(m=>m.stageName||m.name).join('、')+'。残りのメンバーで進めますか？':'';}
 function membersOf(x,i=0,r){return r?.participatingMemberIds?stageMembers(x,i,r):roster(x,i);}
-function cheki(x,own,ids){const allowed=new Set((ids||[]).map(String));const d=x.date||x.dates?.find(v=>v===today())||today();const rows=(groupOf(x)?.members||[]).filter(m=>allowed.has(String(m.id))).map(m=>{
- const details=popularityDetails(m),grade=details.grade;
- const pts=typeof popularityPoints==='function'?Math.max(0,Number(popularityPoints(m))||0):0;
- const following=Math.max(0,Number(state.idolXFollowers?.['member:'+m.id]||0));
- const individuality=Math.max(.82,Math.min(1.20, .91+Math.min(.18,(pts%1000)/5500)+Math.min(.11,Math.log1p(following)/120)));
- const demand=Math.max(0,own)*(RATES[grade]||0)*individuality*window.IDOL_RECENT_BUZZ.memberMultiplier(m,d)*(0.90+Math.random()*.20);
- const count=Math.max(0,Math.round(demand));return {memberId:m.id,name:(typeof m.stageName==='string'&&m.stageName.trim())?m.stageName.trim():(m.name||'メンバー'),count,revenue:count*1000};});return {rows,total:rows.reduce((a,r)=>a+r.revenue,0)};}
+function cheki(x,own,ids){
+ const allowed=new Set((ids||[]).map(String));
+ const date=x.date||x.dates?.find(v=>v===today())||today();
+ const members=(groupOf(x)?.members||[]).filter(m=>allowed.has(String(m.id)));
+ const total=Math.min(1000,Math.max(0,Math.round((Number(own)||0)*.80)));
+ if(!members.length||!total)return {rows:members.map(m=>({memberId:m.id,name:m.stageName||m.name||'メンバー',count:0,revenue:0})),total:0};
+ // The number of buyers comes from actual group attendance, not an old forecast.
+ // Existing member popularity, followers and recent buzz only distribute buyers among participating members.
+ const weights=members.map(m=>{
+  const details=popularityDetails(m),grade=details.grade;
+  const pts=typeof popularityPoints==='function'?Math.max(0,Number(popularityPoints(m))||0):0;
+  const following=Math.max(0,Number(state.idolXFollowers?.['member:'+m.id]||0));
+  const individuality=Math.max(.82,Math.min(1.20,.91+Math.min(.18,(pts%1000)/5500)+Math.min(.11,Math.log1p(following)/120)));
+  return Math.max(.001,(RATES[grade]||.02)*individuality*window.IDOL_RECENT_BUZZ.memberMultiplier(m,date));
+ });
+ const sum=weights.reduce((a,b)=>a+b,0);
+ const exact=weights.map(w=>total*w/sum);
+ const counts=exact.map(v=>Math.floor(v));
+ let remainder=total-counts.reduce((a,b)=>a+b,0);
+ const order=exact.map((v,i)=>({i,frac:v-counts[i]})).sort((a,b)=>b.frac-a.frac);
+ for(let j=0;j<remainder;j++)counts[order[j%order.length].i]++;
+ const rows=members.map((m,i)=>({memberId:m.id,name:m.stageName||m.name||'メンバー',count:counts[i],revenue:counts[i]*1000}));
+ return {rows,total:rows.reduce((a,r)=>a+r.revenue,0)};
+}
 // A completed self-hosted ticket sale is the authority for admissions and ticket revenue.
 // This applies only to self-hosted solo lives; external and hosted joint settlements keep their own rules.
 function irConfirmedSoloTickets(x,i){
@@ -2225,7 +2244,25 @@ function irReconcileFinishedSoloReport(x,i,r){
  r.financial.net=(Number(r.financial.net)||0)+(sale.revenue-oldRevenue);
  save();return true;
 }
-function hostedActual(x,i){const sold=irConfirmedSoloTickets(x,i);if(sold)return sold.sold;const f=x.attendanceForecasts?.[i]||{},cap=Number(stopOf(x,i).capacity||x.capacity)||0;const original=f.actual!==undefined&&f.actual!==null&&Number.isFinite(Number(f.actual))?Math.max(0,Math.min(cap,Math.round(Number(f.actual)))):liveDrawAttendance(forecastOf(x,i),cap);return window.IDOL_ROAD_SCANDAL_EFFECTS?window.IDOL_ROAD_SCANDAL_EFFECTS.attendance(x.groupId,dayOf(x,i),original):original;}
+function irLiveActualAtShow(x,i){
+ const stop=stopOf(x,i),g=groupOf(x),capacity=Math.max(0,Number(stop.capacity||x.capacity)||0);
+ const day=dayOf(x,i),pref=stop.pref||x.pref;
+ const current=livePredictAttendance(g,pref,capacity,day);
+ // Preserve the existing price sensitivity for ticketed self-hosted concerts.
+ const sale=state.hostedLiveTickets?.[String(x.id)+'::'+String(day)];
+ const price=Number(sale?.price)||2000;
+ const demand=Math.max(0,Math.min(capacity,Math.round(current*(isExternal(x)?1:irLivePriceMultiplier(price)))));
+ let actual=liveDrawAttendance(demand,capacity);
+ if(window.IDOL_ROAD_SCANDAL_EFFECTS)actual=window.IDOL_ROAD_SCANDAL_EFFECTS.attendance(x.groupId,day,actual);
+ if(!isExternal(x)){
+  // Never admit more people than confirmed paid tickets for our hosted event.
+  const sold=Number(sale?.sold);
+  actual=Math.min(actual,Number.isFinite(sold)?Math.max(0,Math.round(sold)):0);
+ }
+ return Math.max(0,Math.min(capacity,Math.round(actual)));
+}
+function hostedActual(x,i){return irLiveActualAtShow(x,i);}
+
 function hostedSettlement(x,i,actual){
  if(x.type!=='joint')return null;
  if(x.jointTicketResult)return x.jointTicketResult;
@@ -2297,11 +2334,9 @@ function action(x,i,stage){
   const warning=stageWarning(x,i,'perform',r);if(warning&&!confirm(warning))return;const performers=irLiveStageEligible(x,i,'perform',r);if(!performers.length)return alert('ライブ本番に参加できるメンバーがいません。');
   // Calculate the day's attendance once; do not redraw during report or cheki settlement.
   if(isExternal(x)){
-   // Use the own-group forecast saved when the invitation was issued.
-   // Draw once with the established +/-10-20% rule; never apply the old extra 15% reduction.
+   // Predict at performance time using the existing attendance formula, not the invitation-time estimate.
    const ownForecast=forecastOf(x,i);
-   const initialOwn=liveDrawAttendance(ownForecast,Number(x.capacity)||0);
-   const own=window.IDOL_ROAD_SCANDAL_EFFECTS?window.IDOL_ROAD_SCANDAL_EFFECTS.attendance(x.groupId,dayOf(x,i),initialOwn):initialOwn;
+   const own=irLiveActualAtShow(x,i);
    r.forecast=ownForecast;r.ownForecast=ownForecast;
    r.actual=own;r.ownActual=own;x.ownAttendance=own;x.totalAttendance=own;
   }else{
