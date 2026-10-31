@@ -3445,8 +3445,8 @@ window.IDOL_BOOKING={
  list(){const out=[];const st=state||{};const add=(id,date,start,end,groupId,memberId,title,kind,order)=>{if(!date||!groupId)return;out.push({id:String(id),date:String(date),start:Number(start??0),end:Number(end??24),groupId:String(groupId),memberId:memberId==null?null:String(memberId),title:String(title||''),kind,order:Number(order||0)});};
  const time=x=>{const a=String(x||'').match(/(\d{1,2}):?(\d{2})?\s*[-〜～]\s*(\d{1,2}):?(\d{2})?/);return a?[+a[1]+(+a[2]||0)/60,+a[3]+(+a[4]||0)/60]:[0,24]};
  for(const r of st.musicTV||[])if(['accepted','recorded','broadcasted'].includes(r.status)&&(r.recordDate||r.kind==='live')){const d=r.recordDate||r.broadcastDate;const [a,b]=time(r.slot);add('music:'+r.id,d,Math.max(0,a-1),b,r.groupId,null,r.name,'music',r.bookingOrder||0)}
- for(const r of st.varietyTV||[])if(['accepted','recorded','broadcasted'].includes(r.status)){const d=r.recordDate||r.broadcastDate;const [a,b]=time(r.slot);add('variety:'+r.id,d,a,b,r.groupId,r.mode==='solo'?r.memberId:null,r.name,'variety',r.bookingOrder||0)}
- for(const r of st.dramaFilmWorks||[])if(['accepted','shooting','completed'].includes(r.status))for(const x of r.slots||[])if(!x.done)add('drama:'+r.id+':'+x.date,x.date,x.start,x.end,r.groupId,r.memberId,r.title,'drama',r.bookingOrder||0);
+ for(const r of st.varietyTV||[])if(['accepted','recorded','broadcasted'].includes(r.status)){const d=r.recordDate||(r.live===true?r.broadcastDate:null);if(!d)continue;const [a,b]=time(r.slot);add('variety:'+r.id,d,Math.max(0,a-1),b,r.groupId,r.mode==='solo'?r.memberId:null,r.name,'variety',r.bookingOrder||0)}
+ for(const r of st.dramaFilmWorks||[])if(['accepted','shooting','completed'].includes(r.status))for(const x of r.slots||[])add('drama:'+r.id+':'+x.date,x.date,x.start,x.end,r.groupId,r.memberId,r.title,'drama',r.bookingOrder||0);
  for(const r of st.birthdayEvents||[])if(r.status==='booked'||r.status==='finished')add('birthday:'+r.id,r.date,Number(r.start??10),Number(r.start??10)+3,r.groupId,null,r.memberName+' 生誕祭','birthday',r.bookingOrder||0);
  for(const r of st.handshakeEvents||[])if(r.status==='booked'||r.status==='finished')add('event:'+r.id,r.date,10,18,r.groupId,null,r.type||'イベント','event',r.bookingOrder||0);
  for(const r of st.hostedLives||[])if(!['cancelled','canceled','rejected'].includes(r.status)){
@@ -6165,7 +6165,7 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
    if((state.hostedLives||[]).some(l=>l.externalInviteId===x.id||l.id===x.id))continue;
    const start=this.hour(x.time);add('external:'+x.id,x.date,start,start+Math.max(2,Number(x.duration)||3),x.groupId,null,x.event,'external');}
   for(const r of state.musicTV||[]){if(r.status!=='accepted'||r.kind==='feature')continue;const d=r.recordDate||r.broadcastDate;const [a,b]=slot(r.slot);add('music:'+r.id,d,a,b,r.groupId,null,r.name,'music');}
-  for(const r of state.varietyTV||[]){if(r.status!=='accepted')continue;const [a,b]=slot(r.slot);add('variety:'+r.id,r.recordDate||r.broadcastDate,a,b,r.groupId,r.mode==='solo'?r.memberId:null,r.name,'variety');}
+  for(const r of state.varietyTV||[]){if(r.status!=='accepted')continue;const [a,b]=slot(r.slot);add('variety:'+r.id,r.recordDate||(r.live===true?r.broadcastDate:null),a,b,r.groupId,r.mode==='solo'?r.memberId:null,r.name,'variety');}
   for(const w of state.dramaFilmWorks||[]){if(!['accepted','shooting'].includes(w.status))continue;for(const x of w.slots||[])if(!x.done)add('drama:'+w.id+':'+x.date,x.date,x.start,x.end,w.groupId,w.memberId,w.title||w.name||'ドラマ・映画撮影','drama');}
   for(const r of state.birthdayEvents||[]){if(r.status!=='booked')continue;add('birthday:'+r.id,r.date,r.start??10,(Number(r.start??10)+3),r.groupId,null,(r.memberName||'メンバー')+' 生誕祭','birthday');}
   for(const r of state.handshakeEvents||[]){if(r.status!=='booked')continue;add('event:'+r.id,r.date,10,18,r.groupId,null,r.type||'握手会・写真会','event');}
@@ -6539,7 +6539,31 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
    if(!newLines.length){state.irXChangeNotices[k]=signature;continue;}
    const body='【出演メンバーに関するお知らせ】\n\n'+e.d+'開催「'+e.name+'」につきまして、\n'+newLines.join('\n')+'\n\n何卒ご理解のほどよろしくお願いいたします。';
    const p=oldX('group:'+e.g.id,e.g.name,idolXHandleGroup(e.g),body);
-   if(p){p.quoteOf=original.id;p.irAbsenceEventId=k;state.irXChangeNotices[k]=signature;}
+   if(p){
+    p.quoteOf=original.id;p.irAbsenceEventId=k;state.irXChangeNotices[k]=signature;
+    // Scale reactions to this group's existing social reach, not a fixed viral count.
+    const scale=typeof irXReactionScale==='function'?Math.max(3,irXReactionScale(e.g)):6;
+    p.likes=Math.max(Number(p.likes)||0,Math.round(scale*(8+Math.random()*10)));
+    p.reposts=Math.max(Number(p.reposts)||0,Math.round(scale*(2+Math.random()*4)));
+    const replies=[
+     'えっ、出演しないの残念すぎる…','楽しみにしてたのに残念😭',
+     '何のスケジュールなんだろう？','個人のお仕事かな？応援してる！',
+     'もっと早く教えてほしかったな','お知らせありがとう、了解しました',
+     '会えないの悲しいけど次の機会を待ってます','チケット買ってたから少しショック…',
+     '本人も残念だろうな…無理せず頑張って','別のお仕事が決まったなら嬉しいけど複雑',
+     '予定が重なっちゃったのか…','公式さん告知ありがとう',
+     '年齢の都合なら仕方ないね','特典会だけお休みなのね、了解！'
+    ];
+    const hasAge=newLines.some(t=>t.includes('年齢'));
+    const filtered=replies.filter(t=>hasAge||(!t.includes('年齢')&&!t.includes('特典会だけ')));
+    const n=Math.min(20,Math.max(3,Math.round(scale*.7)));
+    for(let i=0;i<n;i++){
+     const msg=filtered[(i+Math.floor(Math.random()*filtered.length))%filtered.length];
+     const fan=oldX('fan:absence:'+k+':'+i,'ファン'+(i+1),'@idol_fan_notice_'+i,msg);
+     if(fan)fan.replyTo=p.id;
+    }
+    p.comments=Math.max(Number(p.comments)||0,n);
+   }
   }}catch(ex){console.warn('v192 schedule quote',ex)}finally{checking=false;}
  }
  // Music television: actual recorded participants, never the broadcast-day booking calendar.
