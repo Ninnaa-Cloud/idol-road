@@ -1960,6 +1960,13 @@ function extProcess(){
  for(const inv of state.externalInvites||[]){if(inv.status==='pending'&&now>inv.deadline)inv.status='expired'}
  extSettle();save();
 }
+// Shared external-show cap: also used during next-day automatic settlement.
+function irExternalOwnAudienceCap(x,capacity){
+ const cap=Math.max(0,Math.round(Number(capacity)||0));
+ const otherCount=Array.isArray(x?.others)?x.others.length:2;
+ const maxShare=otherCount>=5?.35:otherCount>=3?.4:.45;
+ return Math.max(0,Math.min(cap,Math.floor(cap*maxShare)));
+}
 function extSettle(){
  for(const inv of state.externalInvites||[]){
   if(inv.status!=='accepted'||inv.date>=today())continue;
