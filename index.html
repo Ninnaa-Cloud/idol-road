@@ -3170,23 +3170,42 @@ function announceAllDatesOnSale(l){
  if(post)posted[announcementKey]=post.id||true;
 }
 function ticketDemand(e,t){
- const base=Math.max(0,forecast(e)),max=cap(e);const g=group(e.l);const song=window.IDOL_RECENT_BUZZ.song(g,today()),sns=window.IDOL_RECENT_BUZZ.group(g,today());const extra=Math.min(.15,song*.027+sns*.025);const total=Math.min(max,Math.round(base*(0.87+(Math.abs(ticketHash(e.key)%27)/100)+extra)));
- const span=Math.max(1,Math.round((new Date(e.date+'T12:00:00')-new Date(t.started+'T12:00:00'))/86400000)+1);
- // Tickets rise modestly with current song buzz; no fixed forecast cap.
- const dayFactor=(Math.abs(ticketHash(e.key+'|'+today())%31)+85)/100;
- return Math.max(0,Math.round(total*dayFactor/Math.max(1,span)));
+ // The opening day brings the largest wave. Demand is recalculated from current popularity.
+ const g=group(e.l),max=cap(e),price=Number(t.price)||2000;
+ const pref=e.l.stops?.[e.i]?.pref||e.l.pref;
+ const current=g&&pref?livePredictAttendance(g,pref,max,e.date):forecast(e);
+ const song=g?window.IDOL_RECENT_BUZZ.song(g,today()):0;
+ const sns=g?window.IDOL_RECENT_BUZZ.group(g,today()):0;
+ const buzz=1+Math.min(.15,song*.027+sns*.025);
+ const base=Math.max(0,Math.round(current*irLivePriceMultiplier(price)*buzz));
+ const started=String(t.started||today());
+ const elapsed=Math.max(0,(new Date(today()+'T12:00:00')-new Date(started+'T12:00:00'))/86400000);
+ // Cumulative application fraction: 58% on opening day, then tapers off.
+ const progress=1-.42*Math.exp(-elapsed*.44);
+ const jitter=.96+(Math.abs(ticketHash(e.key+'|sales'))%9)/100;
+ // Lottery has no application cap. Oversubscription is possible when tickets are scarce.
+ const lotteryFactor=t.method==='lottery'?1+Math.min(.75,Math.max(0,base/max-.6)*.55):1;
+ const applications=Math.max(0,Math.round(base*progress*jitter*lotteryFactor));
+ return t.method==='lottery'?applications:Math.min(max,applications);
 }
 function ticketHash(s){let h=2166136261;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return h>>>0;}
 function tick(){let changed=false;for(const e of entries()){
- const t=get(e),left=remaining(e.date);if(t.status==='cancelled'||t.status==='auto_cancelled'||t.status==='finished')continue;
- if(t.status!=='selling'&&t.status!=='lottery_pending')continue;
+ const t=get(e),left=remaining(e.date);
+ if(['cancelled','auto_cancelled','finished'].includes(t.status))continue;
+ if(!['selling','lottery_pending'].includes(t.status))continue;
  if(t.status==='selling'&&left>=0&&t.lastDay!==today()){
-  t.apps=Math.min(cap(e),Math.max(0,t.apps||0)+ticketDemand(e,t));
+  t.apps=Math.max(Number(t.apps)||0,ticketDemand(e,t));
   if(t.method==='first')t.sold=Math.min(cap(e),t.apps);
   t.lastDay=today();t.dailyApps??=[];t.dailyApps.push({date:today(),apps:t.apps,sold:t.sold});changed=true;
  }
- if(t.method==='first'&&left<=0){t.sold=Math.min(cap(e),t.apps);settle(t,e.l.groupId);t.status='finished';changed=true;}
- if(t.method==='lottery'&&left<=1){t.sold=Math.min(cap(e),t.apps);settle(t,e.l.groupId);t.status='finished';changed=true;}
+ // First-come-first-served ends immediately at sellout, regardless of concert date.
+ if(t.method==='first'&&(t.sold>=cap(e)||left<=0)){
+  t.sold=Math.min(cap(e),t.apps);settle(t,e.l.groupId);t.status='finished';changed=true;
+ }
+ // Lottery applications remain open even beyond capacity until the existing cutoff.
+ if(t.method==='lottery'&&left<=1){
+  t.sold=Math.min(cap(e),t.apps);settle(t,e.l.groupId);t.status='finished';changed=true;
+ }
  }
  if(changed)saveChanges();}
 function settle(t,groupId){if(t.credited)return;t.revenue=t.sold*t.price;state.agencyFunds=(Number(state.agencyFunds)||0)+t.revenue;window.IDOL_ACCOUNTING?.record(t.revenue,groupId,null,'live_ticket','ライブ チケット売上');t.credited=true;}
@@ -3749,10 +3768,10 @@ function generate(){if(!state.agency||!groups().length)return;const now=today();
  const monthlyOffers=records().filter(r=>String(r.groupId)===String(g.id)&&r.received?.slice(0,7)===month).length;
  const active=records().filter(r=>String(r.groupId)===String(g.id)&&['offered','accepted','recorded'].includes(r.status)).length;
  const strength=IR_INVITATION_DEMAND(g,null,'music');
- const shots=Math.min(5,1+Math.floor(strength*3)+Math.floor(market*.7));
- const cap=market>=3?3:market>=1?2:1;
+ const shots=1+Math.floor(strength*2)+(market>=2?1:0);
+ const cap=market>=3?3:market>=1?2:2;
  for(let attempt=0;attempt<shots&&monthlyOffers+attempt<cap&&active+attempt<Math.max(2,cap);attempt++){
-   if(Math.random()>Math.min(.90,(.07+strength*.68+recentSongBuzz*.035+market*.11)))continue;
+   if(Math.random()>Math.min(.90,(.13+strength*.48+recentSongBuzz*.025+market*.055)))continue;
    if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now))continue;
    const used=new Set(records().filter(r=>String(r.groupId)===String(g.id)&&r.received?.slice(0,7)===now.slice(0,7)).map(r=>r.name));
    const choices=possible.filter(c=>!used.has(c.name));if(!choices.length)break;
@@ -3831,7 +3850,7 @@ function generate(){
  state.varietyOfferCheckedMonth=month;
  state.varietyOfferChecked=key;
  const isSpecial=(state.month===4||state.month===10);
- const monthlyOdds={net:.35,late:.18,prime:.05,special:.03};
+ const monthlyOdds={net:.25,late:.15,prime:.055,special:.025};
  for(const tier of ['net','late','prime',...(isSpecial?['special']:[])]){
   const cap=RULES[tier].cap;
   const count=records().filter(r=>r.tier===tier&&r.received?.slice(0,7)===month).length;
@@ -3845,13 +3864,13 @@ function generate(){
   const filtered=options.filter(o=>!records().some(r=>r.name===o.show.name&&['offered','accepted','recorded','broadcasted'].includes(r.status)&&r.received>=plus(key,-90)));
   if(!filtered.length)continue;
   const strength=Math.max(0,Math.min(1,Math.max(...filtered.map(o=>IR_INVITATION_DEMAND(o.g,o.m,'variety')))));
-  const draws=strength>=.85?7:strength>=.65?5:strength>=.42?3:strength>=.22?2:1;
-  const limit=strength>=.85?Math.max(cap,7):strength>=.65?Math.max(cap,5):Math.min(cap,draws);
-  for(let trial=0;trial<draws&&records().filter(r=>r.tier===tier&&r.received?.slice(0,7)===month).length<limit;trial++){
+  const draws=strength>=.85?4:strength>=.6?3:strength>=.3?2:1;
+  const limit=Math.min(cap,draws);
+  for(let trial=0;trial<draws&&records().filter(r=>r.tier===tier&&r.received?.slice(0,7)===month).length<limit&&records().filter(r=>r.received?.slice(0,7)===month).length<5;trial++){
    const unused=filtered.filter(o=>!records().some(r=>r.name===o.show.name&&r.received?.slice(0,7)===month));
    if(!unused.length)break;
    const peak=Math.max(0,...unused.map(o=>o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key)));
-   if(Math.random()>=Math.min(.93,(monthlyOdds[tier]+strength*({net:.43,late:.51,prime:.60,special:.62}[tier]))*(1+Math.min(.15,peak*.04))))continue;
+   if(Math.random()>=Math.min(.93,(monthlyOdds[tier]+strength*({net:.36,late:.41,prime:.46,special:.48}[tier]))*(1+Math.min(.15,peak*.04))))continue;
    const weighted=unused.map(o=>({o,w:1+Math.max(0,score(o.g,o.m))/8000*2+(o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key))*.22}));
    let draw=Math.random()*weighted.reduce((a,v)=>a+v.w,0);const x=(weighted.find(v=>(draw-=v.w)<=0)||weighted[weighted.length-1]).o;
    if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,key))continue;
@@ -3948,15 +3967,15 @@ function shoot(w){
 function effects(w){if(w.status!=='completed')return;const due=w.type==='film'?1:w.episodes;const aired=Array.from({length:due},(_,i)=>add(w.release,w.type==='film'?0:i*7)).filter(d=>d<=date()).length;while(w.effects<aired){const t=TYPES[w.type],m=actor(w),g=(state.groups||[]).find(x=>String(x.id)===String(w.groupId));if(!m||!g)break;const factor=w.lead?1.5:1;const f=Math.round(rand(...t.fame)*factor/due),p=Math.round(rand(...t.pop)*factor/due);g.fame=typeof idolFameAdd==='function'?idolFameAdd(Number(g.fame)||0,f):Math.min(100000,(Number(g.fame)||0)+f);m.popularityBuzzXp=Math.min(8000,(Number(m.popularityBuzzXp)||0)+p);m.dramaFilmPopularityBoost=(Number(m.dramaFilmPopularityBoost)||0)+p;w.fameGained=(w.fameGained||0)+f;w.popGained=(w.popGained||0)+p;w.effects++} }
 function leave(){for(const w of all()){if(w.status==='offered'&&date()>=w.deadline)w.status='expired';if(w.status==='accepted'){const s=w.slots.find(x=>x.date===date());if(s&&!s.done){w.absences++;if(w.absences===1){mailItems().push({id:id(),folder:'inbox',subject:`【撮影欠席に関するご連絡】『${w.title}』`,body:`${state.agency} ご担当者様\n\n${w.sender} 制作担当です。\n本日の撮影にご参加いただけなかったため、警告のご連絡を差し上げます。次回欠席の場合は降板となります。\n\n${w.sender}`,date:date(),from:w.sender,read:false});notice(`『${w.title}』の撮影を欠席しました（1回目）。`)}else{w.status='withdrawn';state.schedule=(state.schedule||[]).filter(x=>x.dramaFilmId!==w.id||x.date<=date());notice(`『${w.title}』を2回欠席したため降板しました。`)}}}}save()}
 function enter(){for(const w of all())effects(w);generate();save()}
-function generate(){if(!state.agency||!(state.groups||[]).length)return;const month=date().slice(0,7);if(state.dramaFilmCheckedMonth===month)return;state.dramaFilmCheckedMonth=month;let count=0;for(const type of Object.keys(TYPES)){if(count>=20)break;const candidates=[];for(const g of state.groups)for(const m of g.members||[])for(const lead of [false,true])if(score(m)>=TYPES[type].min[lead?1:0]&&dramaAudienceEligible(g,m,type,lead))candidates.push({g,m,lead});if(!candidates.length)continue;
+function generate(){if(!state.agency||!(state.groups||[]).length)return;const month=date().slice(0,7);if(state.dramaFilmCheckedMonth===month)return;state.dramaFilmCheckedMonth=month;let count=0;for(const type of Object.keys(TYPES)){if(count>=5)break;const candidates=[];for(const g of state.groups)for(const m of g.members||[])for(const lead of [false,true])if(score(m)>=TYPES[type].min[lead?1:0]&&dramaAudienceEligible(g,m,type,lead))candidates.push({g,m,lead});if(!candidates.length)continue;
  const strength=Math.max(0,Math.min(1,Math.max(...candidates.map(x=>IR_INVITATION_DEMAND(x.g,x.m,'drama')))));
- const draws=strength>=.85?6:strength>=.65?4:strength>=.42?3:strength>=.22?2:1;
- for(let trial=0;trial<draws&&count<12;trial++){
+ const draws=strength>=.85?3:strength>=.55?2:1;
+ for(let trial=0;trial<draws&&count<5;trial++){
   const weighted=candidates.map(x=>({x,w:.2+IR_INVITATION_DEMAND(x.g,x.m,'drama')*5+Math.max(0,score(x.m)-TYPES[type].min[x.lead?1:0])/8000}));
   let roll=Math.random()*weighted.reduce((sum,v)=>sum+v.w,0);const x=(weighted.find(v=>(roll-=v.w)<=0)||weighted[weighted.length-1]).x;
   const eligibility=Math.max(0,Math.min(1,(score(x.m)-TYPES[type].min[x.lead?1:0])/Math.max(1,8000-TYPES[type].min[x.lead?1:0])));
   const demand=IR_INVITATION_DEMAND(x.g,x.m,'drama');
-  const reach=Math.min(1,Math.max(0,Number(x.g.fame)||0)/100000)*.5+Math.min(1,groupPopularityPoints(x.g).total/8000)*.5;const visibility=Math.pow(reach,1.6);const chance=Math.min(.94,(TYPES[type].odds[x.lead?1:0]*.20+eligibility*.025)*visibility+demand*visibility*({short:.56,late:.65,prime:.70,film:.72}[type]));
+  const reach=Math.min(1,Math.max(0,Number(x.g.fame)||0)/100000)*.5+Math.min(1,groupPopularityPoints(x.g).total/8000)*.5;const visibility=Math.pow(reach,.95);const chance=Math.min(.94,(TYPES[type].odds[x.lead?1:0]*.20+eligibility*.025)*visibility+demand*visibility*({short:.38,late:.42,prime:.45,film:.46}[type]));
   if(Math.random()<chance&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,date()))&&produce(x.g,x.m,type,x.lead))count++;
  }
  }save()}
