@@ -3258,6 +3258,45 @@ const priorLive=renderLiveHost;renderLiveHost=function(){priorLive();const list=
 })();
 </script>
 
+<script id="ir-x-account-rebuild-v234">
+(function(){'use strict';
+ const names=['みお','なつ','あおい','さくら','はる','ゆず','ひな','こはる','しおり','りん','れい','みずき','りこ','つむぎ','かな','えま','ゆい','まい','りな','のあ','るな','さえ','あかり','ひより','みく','りお','あや','なぎ','ほのか','さな','せな','すず','のの','ことね','みな','もも','えり','かほ','はづき','いちか','りく','なお','けい','ゆう','そう','かい','れん','はるか','しゅん','ひろ','こう','いぶき','みなと','ゆき','まこと','みや','るい','いつき','まひろ','のぞみ','あさひ','しずく','ひかり','おと','ふうか','ゆずき','らん','わか','ちひろ','まな','りさ','のどか','あずさ','めい','ゆな','まどか','すみれ','りょう','こはく','みやび','のん','つばさ','きょう','みさき','ゆうり','あみ','せいら','ひなた','もえ','あかね','あお','かりん','りおな','さら','つき','るり','かの','なな','はな'];
+ const ids=['mio','natsu','aoi','sakura','haru','yuzu','hina','koharu','shiori','rin','rei','mizuki','riko','tsumu','kana','ema','yui','mai','rina','noa','runa','sae','akari','hiyori','miku','rio','aya','nagi','honoka','sana','sena','suzu','nono','kotone','mina','momo','eri','kaho','hazuki','ichika','riku','nao','kei','yu','sou','kai','ren','haruka','shun','hiro','kou','ibuki','minato','yuki','makoto','miya','rui','itsuki','mahiro','nozomi','asahi','shizuku','hikari','oto','fuka','yuzuki','ran','waka','chihiro','mana','risa','nodoka','azusa','mei','yuna','madoka','sumire','ryo','kohaku','miyabi','non','tsubasa','kyo','misaki','yuri','ami','seira','hinata','moe','akane','ao','karin','riona','sara','tsuki','ruri','kano','nana','hana'];
+ const words=['','_o','_log','_day','_n','_m','_p','_x','_u','_s','_note','_memo'];
+ function hash(v){let h=2166136261;for(const c of String(v||''))h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
+ function db(){return state.irXAccountRebuildV234??={version:1,serial:0,aliases:{},profiles:{}}}
+ function newAuthor(kind='general',seed=''){
+   const st=db(); const seq=++st.serial; const h=hash(kind+'|'+seed+'|'+seq); const i=h%names.length;
+   const handle='@'+ids[i]+words[(h>>>9)%words.length]+(h%7===0?String((h>>>5)%90+10):'');
+   const author={id:'xhuman_'+seq.toString(36),name:names[i],handle,kind};st.profiles[author.id]=author;return author;
+ }
+ function protectedPost(p){const a=String(p?.account||'');const n=String(p?.name||'');const handle=String(p?.handle||'');return !p||a==='agency'||a.startsWith('group:')||a.startsWith('member:')||a.startsWith('magazine:')||a.startsWith('leak:')||/^(?:文春|FRIDAY|FLASH|週刊|暴露系)/i.test(n)||/^@(?:bunshun|friday|flash|leak|agency)/i.test(handle)}
+ function assign(p,asComment=false){
+  if(!p||(!asComment&&protectedPost(p)))return false;
+  const st=db(); const oldKey=String(p.account||p.authorId||p.id||p.handle||'anon');
+  let alias=st.profiles[oldKey]||st.aliases[oldKey];
+  if(!alias){let kind=/^(fan:)|oshi|idol_fan|fan|現場|推し|特典会/i.test(oldKey+' '+(p.name||''))?'fan':'general';alias=newAuthor(kind);st.aliases[oldKey]=alias;}
+  const changed=p.name!==alias.name||p.handle!==alias.handle||(!asComment&&(p.account!==alias.id&&p.authorId!==alias.id));
+  p.name=alias.name;p.handle=alias.handle;
+  if(!asComment){
+   if(p.account!==undefined)p.account=alias.id;
+   if(p.authorId!==undefined)p.authorId=alias.id;
+  }
+  return changed;
+ }
+ function migrate(){
+  const st=db(); let dirty=false;
+  const collections=[state.idolXPosts,state.idolXCommunity?.posts];
+  for(const posts of collections)if(Array.isArray(posts))for(const p of posts){if(assign(p))dirty=true;if(Array.isArray(p.communityComments))for(const c of p.communityComments)if(assign(c,true))dirty=true;}
+  const community=state.idolXCommunity;
+  if(community&&(!st.clearedOld)){
+   community.fans=[];community.eventAuthors={};st.clearedOld=true;dirty=true;
+  }
+  return dirty;
+ }
+ window.IR_X_ACCOUNT_REBUILD_V234={newAuthor,migrate,assign};
+})();
+</script>
 <script>
 /* Member X auto-posts: existing MBTI, SNS, visual and profile photos only. */
 (function(){
@@ -3271,12 +3310,38 @@ const choose=(a)=>a[Math.floor(Math.random()*a.length)];
 const score=(m,key)=>typeof popularitySkillPoints==='function'?popularitySkillPoints(m,key):0;
 const gradeIndex=v=>Math.min(7,Math.floor(clamp(v,0,8000)/1000));
 const followers=id=>Number(window.__idolRoadXFollowers?.(id))||0;
-function memberText(m,kind){
- const type=templates[m.mbti]||templates.INFP, pool=type[kind], key='idolXTextRecent'+(kind==='photo'?'Photo':'Normal');
- const recent=Array.isArray(m[key])?m[key]:[];
- const options=pool.map((_,i)=>i).filter(i=>!recent.includes(i));
- const idx=choose(options.length?options:pool.map((_,i)=>i));
- m[key]=[...recent,idx].slice(-Math.min(30,pool.length-1));
+function memberText(m,kind,g){
+ // Personality controls viewpoint and detail, not a fixed greeting attached to every post.
+ const mb=String(m.mbti||'INFP').toUpperCase();
+ const others=(g?.members||[]).filter(x=>String(x.id)!==String(m.id)&&!x.idolRoadDismissed);
+ const friend=others.length?others[Math.floor(Math.random()*others.length)]:null;
+ const f=friend?(String(friend.nickname||'').trim()||(String(friend.stageName||friend.name||'').trim().split(/[\s　]+/).pop()||'メンバー')+'ちゃん'):'メンバー';
+ const styles={
+  INTJ:['自分の中で次に挑戦したいことを整理してた。目標を決めると、今日やるべきこともはっきりする。',`${f}の練習を見て、自分にも取り入れられることがあるなと思った。少し試してみる。`,'細かいところまで納得できるパフォーマンスにしたい。考える時間も結構好き。'],
+  INTP:['振り付けの細かい動きを考えてたら、気づいたら時間が経ってた。もう少し試したい。',`${f}と話してたら、思いがけない方向に話が広がって面白かった。`,'同じ曲でも聴くたび気になる音が変わるの、不思議。'],
+  ENTJ:[`${f}と次のステージの話をした。やりたいことがまだまだあるから形にしたい。`,'自分の課題が分かってるなら、あとは積み重ねるだけ。今日も進めた。','今の自分たちに満足せず、次の景色を見せたい。'],
+  ENTP:[`${f}と何でもない話から企画の話になって、気づいたら盛り上がってた笑`,'新しいこと試すの楽しい。いつもと違う見せ方もやってみたい。','ちょっとした発想がステージを変えるかもしれないと思うとわくわくする。'],
+  INFJ:[`${f}がさりげなく声をかけてくれたの、すごくありがたかった。ちゃんと覚えておきたい。`,'言葉にするのは難しいけど、今日の練習で少し前に進めた気がする。','一緒にいる人たちが安心して頑張れる場所でありたいな。'],
+  INFP:[`${f}と帰り道に話したこと、まだ思い出してる。何気ない会話っていいな。`,'好きな曲を聴きながら少し遠回りした。こういう時間も大切。','うまく言えないけど、歌っていると届けたい気持ちが少しずつ形になる。'],
+  ENFJ:[`${f}が頑張っているところを見ると、私も頑張ろうって思える。今日もありがとう。`,'みんなで一つのものを作るのって本当に楽しい。次のステージも大切にしたい。','今日ファンの方の言葉を思い出して元気をもらった。みんなにもいい一日がありますように。'],
+  ENFP:[`${f}と笑いすぎて、何の話をしてたか途中から分からなくなった😂`,'レッスン終わりにみんなで寄り道！こういう時間って最高だね。','新しくやってみたいことがまた増えた！いつかみんなにも見せたいな✨'],
+  ISTJ:[`${f}と今日の振りを確認した。細かいところまで揃うと気持ちがいい。`,'練習の記録を見返したら、先月よりできることが増えていた。継続してよかった。','次のステージまでに直したい点を整理した。ひとつずつ頑張ります。'],
+  ISFJ:[`${f}と一緒に練習できて安心した。いつもありがとう☺️`,'みんなが頑張ってる姿を見られると、私も嬉しくなる。','今日は温かい飲み物を飲んでゆっくり。みんなも無理しないでね。'],
+  ESTJ:[`${f}と立ち位置を確認して、練習がスムーズに進んだ。次もこの調子で。`,'できたことと改善点を振り返った。少しずつでも確実に進めたい。','今日の練習は充実してた！次はもっと完成度を上げたい。'],
+  ESFJ:[`${f}とごはんを食べながらたくさん話せた！楽しかった〜☺️`,'みんなが笑ってると私まで元気になる。今日もいい一日だった。','コメントいつも読んでるよ。応援してくれるみんなに感謝！'],
+  ISTP:[`${f}と練習終わりに少し話した。意外と盛り上がった笑`,'今日は苦手だった動きができた。ひとまず満足。','新しい振り、実際に動いてみたらコツが分かった。'],
+  ISFP:[`${f}と帰りに見つけたお店がかわいかった。また行きたいな。`,'夕方の空がきれいで、ちょっと立ち止まった。','好きな音に合わせて踊れる時間がやっぱり好き。'],
+  ESTP:[`${f}とノリで始めた勝負がめっちゃ白熱した😂`,'新しい振り、まずやってみたら意外といけた！','今日は動きっぱなしだったけど楽しかった。また頑張ろ！'],
+  ESFP:[`${f}とずっと笑ってた！ほんと楽しかった😂💕`,'今日のみんなのテンション最高だった！次のライブも楽しみ！','美味しいもの食べて元気満タン！みんなは何食べた？']
+ };
+ const normal=styles[mb]||styles.INFP;
+ const photo=[`今日はこんな感じの写真を撮ったよ。${f}がいい感じって言ってくれた☺️`,'撮影の合間に一枚。ちょっとお気に入り。','今日の写真！表情どうかな？'];
+ const pool=kind==='photo'?photo:normal;
+ const key='idolXTextRecentV233'+(kind==='photo'?'Photo':'Normal');
+ const last=Number(m[key]??-1);
+ const options=pool.map((_,i)=>i).filter(i=>i!==last);
+ const idx=choose(options);
+ m[key]=idx;
  return pool[idx];
 }
 function photoTier(points){return points<2000?0:points<4000?1:points<6000?2:points<7000?3:4}
@@ -3364,13 +3429,22 @@ const xRandom=a=>a[Math.floor(Math.random()*a.length)];
 function xMemberCall(m){if(!m)return '';const nick=String(m.nickname||'').trim();if(nick)return nick;const full=String(m.stageName||m.name||'').trim();const first=full.split(/[\s　]+/).filter(Boolean).pop()||full;return first+(first.endsWith('ちゃん')?'':'ちゃん')}
 function xIsDebutPost(p){return /(?:新)?メンバー発表！|(?:新メンバー|メンバー)になりました！/.test(String(p?.body||''))}
 
-function xFanAccount(m,g){const db=xCommunity(),existing=db.fans.filter(f=>f.memberId===m?.id&&f.groupId===g?.id);if(existing.length&&Math.random()<.7)return xRandom(existing);const n=xRandom(xFanNames),oshi=m?xMemberCall(m):(g?.name||'アイドル'),named=Math.random()<.55;const id='fan'+(++db.serial);const f={id,memberId:m?.id||null,groupId:g?.id||null,name:named?(Math.random()<.5?oshi+xRandom(xFanSuffix):n+'｜'+oshi+'推し'):n+xRandom(['','の推し活','の日常','_idol','🫶','です']),handle:'@'+xRandom(['oshi','idol','fan','love','haru','mio','day','music'])+'_'+id};db.fans.push(f);return f}
-function xNewStranger(){const db=xCommunity(),id=++db.serial;return {id:'stranger'+id,name:xRandom(['通りすがり','音楽好き','ねむい人','ライブ好き','日常メモ','みずき','りく','うた','休日の人','あおい','音楽のある暮らし','普通の人','アイドル好き','現場帰り']),handle:'@'+xRandom(['daily','music','note','random','live','hobby','days'])+'_'+id}}
+function xFanAccount(m,g){
+ const db=xCommunity();db.fans??=[];
+ const candidates=db.fans.filter(f=>f.groupId===g?.id&&f.memberId===m?.id);
+ if(candidates.length&&Math.random()<.75)return xRandom(candidates);
+ const f=window.IR_X_ACCOUNT_REBUILD_V234?.newAuthor('fan',`${g?.id||''}:${m?.id||''}`);
+ if(f){f.groupId=g?.id||null;f.memberId=m?.id||null;db.fans.push(f);return f;}
+ return {id:'fan_default',name:'みお',handle:'@mio'};
+}
+function xNewStranger(){
+ return window.IR_X_ACCOUNT_REBUILD_V234?.newAuthor('general')||{id:'general_default',name:'なつ',handle:'@natsu'};
+}
 function xCommunityPost(author,body,kind,ref,day){const db=xCommunity();db.posts.unshift({id:'xc'+(++db.serial),name:author.name,handle:author.handle,authorId:author.id,body,kind,quoteOf:ref?.id||null,date:day,likes:Math.floor(Math.random()*36),reposts:Math.floor(Math.random()*6)});}
 function xPickOfficial(m,g,category){const ps=state.idolXPosts||[];const mine=ps.filter(p=>p.account==='member:'+m?.id&&!p.repostOf),group=ps.filter(p=>p.account==='group:'+g?.id&&!p.repostOf),office=ps.filter(p=>p.account==='agency'&&!p.repostOf);const pool=category===0?mine.filter(p=>p.photoId!=null||(p.memberAutoPhoto&&p.memberAutoPhoto.photoId!=null)):category===1?mine:category===2?group:office;const recent=pool.filter(p=>p&&p.body).slice(0,12);const debut=recent.filter(xIsDebutPost);return category!==0&&debut.length&&Math.random()<.65?xRandom(debut):(recent.length?xRandom(recent):null)}
 const xToneTags=['soft','excited','short','thoughtful','casual'];
 function xAccountTone(a){if(!a.tone)a.tone=xToneTags[Math.abs([...String(a.id||a.handle||'')].reduce((n,c)=>n*31+c.charCodeAt(0),7))%xToneTags.length];return a.tone}
-function xTopic(p){const b=String(p?.body||'');if(xIsDebutPost(p))return 'debut';if(p?.photoId!=null||(p?.memberAutoPhoto&&p?.memberAutoPhoto.photoId!=null))return 'photo';if(/ラーメン|カレー|お菓子|ケーキ|パン|ごはん|ご飯|食べ|飲み|おいし|美味|ランチ|夕食|朝食|お腹|カフェ/.test(b))return 'food';if(/レッスン|練習|振付|ダンス|自主練|筋トレ|リハーサル|リハ|トレーニング/.test(b))return 'practice';if(/眠い|寝る|おやすみ|寝不足|早起き|睡眠/.test(b))return 'sleep';if(/ありがとう|感謝|応援してくれ|支えてくれ|みんなのおかげ/.test(b))return 'thanks';if(/ライブ|ステージ|本番|公演|リリース|新曲|出演/.test(b))return 'stage';if(/音楽|曲|歌|プレイリスト|聴い|聞い/.test(b))return 'music';if(/雨|晴れ|天気|暑い|寒い|季節|風/.test(b))return 'weather';if(/質問|教えて|どう思う|どっち|おすすめ|みんなは|何して/.test(b))return 'question';if(/メンバー|一緒|仲間|グループ/.test(b))return 'members';return 'daily'}
+function xTopic(p){const b=String(p?.body||'');if(xIsDebutPost(p))return 'debut';if(p?.photoId!=null||(p?.memberAutoPhoto&&p?.memberAutoPhoto.photoId!=null))return 'photo';if(/ラーメン|カレー|お菓子|ケーキ|パン|ごはん|ご飯|食べ|飲み|おいし|美味|ランチ|夕食|朝食|お腹|カフェ/.test(b))return 'food';if(/レッスン|練習|振付|ダンス|自主練|筋トレ|リハーサル|リハ|トレーニング/.test(b))return 'practice';if(/眠い|寝る|おやすみ|寝不足|早起き|睡眠/.test(b))return 'sleep';if(/ライブ|ステージ|本番|公演|対バン|フェス|セトリ|イベント|出演|チケット|ツアー|リリース|新曲|放送|配信/.test(b))return 'stage';if(/ありがとう|感謝|応援してくれ|支えてくれ|みんなのおかげ/.test(b))return 'thanks';if(/音楽|曲|歌|プレイリスト|聴い|聞い/.test(b))return 'music';if(/雨|晴れ|天気|暑い|寒い|季節|風/.test(b))return 'weather';if(/質問|教えて|どう思う|どっち|おすすめ|みんなは|何して/.test(b))return 'question';if(/メンバー|一緒|仲間|グループ/.test(b))return 'members';return 'daily'}
 const xFanLines={
  devotion:['{n}を知ってから毎日ちょっと楽しい','{n}の言葉って不思議と元気が出る','今日も{n}のこと考えてた','{n}を応援する時間が好き','{n}の良さ、まだ知らない人にも伝わってほしい','推しがいる生活っていいな','{n}の笑顔を思い浮かべると頑張れる','今日の推し活メモ：{n}が好き','何度でも言うけど{n}が大好き','{n}を見つけられてよかった','{n}のペースで進んでほしい','{n}の努力を見守りたい','推しへの好きが更新され続けてる','{n}の名前を見るだけでうれしい','これからも変わらず{n}を応援する','{n}のファンでいられて幸せ','何気ない投稿にも元気をもらう','推しを応援できる毎日を大切にしたい','{n}の魅力を語りだすと止まらない','今日は特に{n}への愛が強い'],
  group:['{g}の空気感が本当に好き','{g}のことをもっと知ってもらいたい','{g}のメンバーそれぞれに魅力がある','{g}を応援している時間が楽しい','{g}のこれからを見守りたい','{g}を知れてよかった','グループ全体を応援したくなる','{g}の名前を見かけるとうれしくなる','{g}の良さを友達に語りたい','今日も{g}を応援中','{g}の活動を追うのが日課になってる','{g}の個性が好き','{g}が少しずつ広まるといいな','みんなの頑張りを見守ってる','{g}のファンが増えるとうれしい'],
@@ -3391,14 +3465,14 @@ const xCommentLines={
  practice:['レッスンお疲れさま！','練習頑張っててすごい','積み重ねが力になるね','今日はゆっくり休んでね','頑張りが伝わってくる','無理せず続けてね','努力してる姿を応援してる','お疲れさま、えらい！','練習の話聞けてうれしい','頑張った分しっかり休んで','いつも応援してるよ','一歩ずつ進んでるね','レッスン報告ありがとう','自分のペースで頑張ってね','努力が実りますように'],
  sleep:['眠いときは休んでね','しっかり眠れますように','おやすみなさい','今日は無理しないで','睡眠大事！','ゆっくり休めるといいね','お布団が恋しい日だね','休息も大切だよ','いい夢見てね','疲れをためないでね','寝不足になりませんように','早く休めるといいね'],
  thanks:['こちらこそいつもありがとう','いつも元気もらってるよ','感謝を伝えてくれてうれしい','これからも応援するね','その言葉がうれしい','応援できて幸せ','こちらこそ大好き！','いつもありがとうって伝えたい','言葉にしてくれてありがとう','応援しててよかった','その気持ち届いてるよ','これからも見守ってる','いつも励まされてる','感謝するのはこっちの方だよ','優しい言葉をありがとう'],
- stage:['活動の話聞けてうれしい','これからも応援してる','報告ありがとう','準備お疲れさま','楽しみにしてるよ','一歩ずつ頑張ってね','体調に気をつけてね','その話聞けてわくわくする','活動を見守ってる','無理せず頑張ってね','いつも応援してる','頑張りが伝わってくる'],
+ stage:['ライブ楽しみにしてる！','出演おめでとう！','このステージ絶対見たい','次のライブも楽しみ','どんなセトリになるかな','現場行ける人うらやましい','告知待ってた！','最高のステージになりますように','応援してるよ！','会場で会えるの楽しみ','ライブお疲れさま！','またステージ見たい！'],
  music:['何の曲か気になる！','音楽の話もっと聞きたい','おすすめ教えてほしい','どんなジャンルが好き？','その曲聴いてみたい','音楽の好み知れるのうれしい','歌の話が好き','プレイリスト気になる','私も音楽聴きたくなった','最近のおすすめ知りたい','音楽の話って楽しい','何回くらい聴いたのかな'],
  weather:['体調気をつけてね','天気に振り回されるよね','今日も元気に過ごしてね','こういう日常の話好き','季節の変わり目だね','無理しないでね','その気持ちわかる','気温差に気をつけて','お天気の話ほっこりする','いい一日になりますように'],
  question:['私はちょっと迷う！','みんなの回答も気になる','質問してくれてうれしい','考えるの楽しいね','どっちも良さそう','こういう話題好き','答えを考えてた','みんなはどうなんだろう','また質問してほしい','答えたくなる質問！'],
  members:['メンバーの話うれしい','仲の良さが伝わってくる','グループの雰囲気好き','ほっこりした','こういうエピソード大好き','メンバーとの時間大切にしてね','みんなの関係性が好き','一緒に過ごせてよかったね','話を聞けてうれしい','グループ愛を感じる'],
  daily:['投稿ありがとう！','こういう何気ない話好き','今日も更新うれしい','わかる気がする','その話もっと聞きたい','読んでほっこりした','なんだか元気出た','今日も応援してる','日常を共有してくれてうれしい','その気持ち好き','こういうつぶやき好き','今日もいい日になりますように','ちょっと共感した','コメントしたくなった','何気ない言葉に癒やされる','元気そうでうれしい','いつも見てるよ','お話聞けてよかった','投稿見つけてうれしい','今日もありがとう'],
  outsider:['おすすめで見かけて気になった','アイドル詳しくないけど目に留まった','この投稿が話題なのかな','初めて見たけど気になる','普段あまり見ないジャンルだけど興味出た','ここから知った人も多そう','おすすめに出てきたので見てみた','なんだか注目されてるね','話題になってる理由が気になる','初見だけど雰囲気いいね','たまたま流れてきた','こういう投稿もあるんだね','普段アイドル追ってないけど見に来た','少し気になって調べてみた','みんなの反応が面白い']};
-function xCommentText(p,outsider,used=[],author){const topic=outsider?'outsider':xTopic(p),pool=xCommentLines[topic]||xCommentLines.daily;const selected=xVaried(pool,used,used.length);return xStyled(selected,xAccountTone(author||{}))}
+function xCommentText(p,outsider,used=[],author){const topic=xTopic(p),pool=outsider?(topic==='photo'?xCommentLines.outsider:[ 'この投稿が話題になってるんだ', 'たまたま見かけたけど気になる', 'このグループ、最近よく名前を聞く', 'ライブ活動頑張ってるんだね', '普段は追ってないけど応援したくなる' ]):(xCommentLines[topic]||xCommentLines.daily);const selected=xVaried(pool,used,used.length);return xStyled(selected,xAccountTone(author||{}))}
 function xBuildComments(p){if(!p)return [];const groupDebut=String(p.account||'').startsWith('group:')&&xIsDebutPost(p);if(!String(p.account||'').startsWith('member:')&&!groupDebut)return [];const db=xCommunity();p.communityComments??=[];const target=groupDebut?Math.max(5,Math.min(30,Math.round((Number(p.likes)||0)*.03))):Math.min(30,Math.max(0,Math.round((Number(p.likes)||0)*(p.memberAutoPhoto?.035:.02))));const memberId=String(p.account).slice(7),g=groupDebut?(state.groups||[]).find(g=>String(g.id)===String(p.account).slice(6)):(state.groups||[]).find(g=>(g.members||[]).some(m=>String(m.id)===memberId)),m=groupDebut?null:g?.members?.find(m=>String(m.id)===memberId);if(!g||(!m&&!groupDebut))return [];while(p.communityComments.length<target){const outside=!!p.memberBuzzEffect&&Math.random()<(.08+.1*p.memberBuzzEffect.level),author=outside?xNewStranger():xFanAccount(m,g);p.communityComments.push({name:author.name,handle:author.handle,body:xCommentText(p,outside,p.communityComments.map(c=>c.body),author),likes:Math.floor(Math.random()*100),day:today(),id:'comment'+(++db.serial),reply:null});}const ordered=[...p.communityComments].sort((a,b)=>(!!b.reply)-(!!a.reply)||b.likes-a.likes);return [...ordered.slice(0,20),...p.communityComments.slice(-10).filter(c=>!ordered.slice(0,20).includes(c))].slice(0,30)}
 function irXPruneOldOfficialMemberPosts(day){
  const base=new Date(String(day)+'T00:00:00');if(!Number.isFinite(base.getTime()))return;
@@ -3439,7 +3513,7 @@ const xRecommendedCutoff=new Date(day+'T00:00:00');xRecommendedCutoff.setDate(xR
 db.posts=db.posts.filter(p=>{const d=new Date(String(p.date)+'T00:00:00');return !Number.isNaN(d.getTime())&&d>=xRecommendedCutoff});
 if(db.lastDay===day)return;db.lastDay=day;const groups=state.groups||[];for(const g of groups){for(const m of g.members||[]){const ranges=[[0,1],[0,2],[1,3],[2,5],[3,7],[5,10],[8,15],[12,20]],r=ranges[xFanRank(m)],count=r[0]+Math.floor(Math.random()*(r[1]-r[0]+1));for(let i=0;i<count;i++){const f=xFanAccount(m,g),quote=(xRecentBuzz().some(p=>String(p.account||'')==='member:'+m.id)&&Math.random()<.2)?xPickOfficial(m,g,0):null;xCommunityPost(f,xFanText(m,g,quote,f),'fan',quote,day);}}const fame=Math.max(0,Number(g.fame)||0),gc=Math.min(8,Math.floor(fame/1000));for(let i=0;i<gc;i++){const f=xFanAccount(null,g);xCommunityPost(f,xFanText(null,g,null,f), 'fan',null,day);}}
 const general=['アイドルの曲を聴くと気分が変わる','ライブ映像ってつい最後まで見ちゃう','最近プレイリストを整理してる','振り付けを見るのが好き','ステージ照明の演出って面白い','歌詞をじっくり読む時間が好き','アイドルの衣装デザインを見るのが楽しい','曲のイントロでテンション上がる','推し活の予算管理って難しい','新しい音楽に出会いたい','友達と好きな曲の話をした','歌声の個性を聴き比べるの楽しい','パフォーマンス動画をつい繰り返し見る','アイドルのトーク力ってすごい','ステージでの表情の切り替えに惹かれる','ライブ会場の一体感って特別','ペンライトの色を見るのが好き','休日は音楽を流して過ごしたい','推し活の思い出を整理してる','同じ曲でもライブ版だと印象変わる','歌とダンスの両立ってすごい','ライブの音響って大事だよね','ダンスのフォーメーションを見るの好き','おすすめのアイドル曲を探してる','昔好きだった曲を久しぶりに聴いた','グループごとに魅力が違うのが面白い','アイドル文化って奥が深い','推しを語る友達の熱量が好き','曲名を覚えるのが追いつかない','コールを覚えるのって意外と大変','パフォーマンスの細かい動きが気になる','歌詞の一節が頭から離れない','現場の雰囲気ってグループごとに違う','好きな曲を人に薦めるの難しい','音楽の趣味が広がってうれしい','アイドルの表現力って見ていて飽きない','サビの振り付けを覚えたくなる','推し活してる人の楽しそうな話が好き','楽曲のアレンジを聴き比べてる','帰り道は好きな曲を聴きたい'];for(let i=0;i<4;i++){const a=xNewStranger();xCommunityPost(a,xStyled(xVaried(general,db.posts.filter(p=>p.kind==='general').slice(0,45).map(p=>p.body),45),xAccountTone(a)),'general',null,day)}
-for(const p of xRecentBuzz()){const level=p.memberBuzzEffect.level,age=Math.max(0,Number(p.memberBuzzEffect?.elapsed)||0),base=[[0,0],[1,2],[3,5],[6,10],[12,20]][level],factor=age===0?1:age===1?.7:age===2?.4:.1,count=Math.round((base[0]+Math.floor(Math.random()*(base[1]-base[0]+1)))*factor);for(let i=0;i<count;i++)xCommunityPost(xNewStranger(),xRandom(['普段アイドル見ないけど、この子気になる','おすすめに流れてきた！この子誰？','この投稿めっちゃ伸びてる','アイドル詳しくないけど見入っちゃった','話題になってるのを見かけた','自分にはよく分からないけど人気なんだね']),'buzz',Math.random()<.6?p:null,day);p.memberBuzzEffect.elapsed=age+1;}
+for(const p of xRecentBuzz()){const level=p.memberBuzzEffect.level,age=Math.max(0,Number(p.memberBuzzEffect?.elapsed)||0),base=[[0,0],[1,2],[3,5],[6,10],[12,20]][level],factor=age===0?1:age===1?.7:age===2?.4:.1,count=Math.round((base[0]+Math.floor(Math.random()*(base[1]-base[0]+1)))*factor);for(let i=0;i<count;i++)xCommunityPost(xNewStranger(),xRandom(['普段アイドル見ないけど、この子気になる','投稿が話題になってるんだね','この投稿めっちゃ伸びてる','アイドル詳しくないけど気になった','話題になってるのを見かけた','自分にはよく分からないけど人気なんだね']),'buzz',Math.random()<.6?p:null,day);p.memberBuzzEffect.elapsed=age+1;}
 // Rare member replies, once per member per day at most, using fan-service and MBTI.
 for(const g of groups)for(const m of g.members||[]){
  const mid='member:'+m.id;if(idolXMemberPostingBlocked(mid)||db.repliedDay[mid]===day)continue;
@@ -3470,7 +3544,7 @@ function daily(){
   const photoSlot=hasPhoto?Math.floor(Math.random()*total):-1;
   for(let i=0;i<total;i++){
    const isPhoto=i===photoSlot;
-   const post=idolXAdd('member:'+m.id,m.stageName||m.name,m.xHandle||idolXHandleMember(m,g),memberText(m,isPhoto?'photo':'normal'),isPhoto?m.profilePhotoId:null);
+   const post=idolXAdd('member:'+m.id,m.stageName||m.name,m.xHandle||idolXHandleMember(m,g),memberText(m,isPhoto?'photo':'normal',g),isPhoto?m.profilePhotoId:null);
    if(!post)continue;
    const target=reactions(m,isPhoto);
    post.memberAutoReaction={...target,start:stamp()};
@@ -4198,12 +4272,44 @@ function agency(){return {account:'agency',name:(state.agency||'事務所')+' �
 function dayKind(date){const d=new Date(String(date)+'T12:00:00');return d.getDay()===0||d.getDay()===6?'weekend':'weekday';}
 function fanAnnouncement(l,date,i,p){const g=group(l);if(!g)return;fans(g,'announce',p);const weekend=dayKind(date)==='weekend';const lines=weekend?['土日開催ありがたい！','週末なら行けそう！','休みの日に会えるのうれしい！']:['平日だけど予定合わせたい！','仕事終わりに間に合うかな','休み取れるか調べよう'];const db=data(),pool=db.fans[g.id]||[];if(pool.length){const f=pick(pool);const q=post('fan:'+f.id,f.name,f.handle,pick(lines));if(p)q.replyTo=p.id;}}
 function tourFamily(l){const id=String(l.id||'');const m=id.match(/^(.*)_city_\d+$/);if(!m)return null;return (state.hostedLives||[]).filter(x=>String(x.id||'').startsWith(m[1]+'_city_')).sort((a,b)=>String(a.dates?.[0]||'').localeCompare(String(b.dates?.[0]||'')));}
-function announceTourFamily(family){const l=family[0],g=group(l);if(!g)return;const stops=family.map(x=>`📅 ${x.dates?.[0]||''}  📍 ${x.stops?.[0]?.venue||x.venue||'会場未定'}`).join('\n');const body=`🎤 ツアー開催決定 🎤\n\n『${l.name||'ツアー'}』の開催が決定しました！\n全公演のチケット販売がスタートしました！\n\n${stops}\n\n各地でお会いできるのを楽しみにしています✨\n\n#${idolXHashName(g.name)}`;const p=post('group:'+g.id,g.name,idolXHandleGroup(g),body);const a=agency();post(a.account,a.name,a.handle,'',p.id);for(const m of g.members||[])post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),'',p.id);fanAnnouncement(l,l.dates?.[0],0,p);}
+// v230: milestone announcements, based on actual booked venues rather than the live title.
+function ir230Venue(l,i=0){return String(l.stops?.[i]?.venue||l.venue||'会場未定').trim();}
+function ir230Cap(l,i=0){const v=ir230Venue(l,i);return Math.max(0,Number(l.stops?.[i]?.capacity||l.stops?.[i]?.cap||l.capacity||l.cap)||Number((typeof LIVE_VENUES!=='undefined'?LIVE_VENUES:[]).find(x=>String(x[1])===v)?.[2])||0);}
+function ir230FirstZepp(g,ls){
+ const all=ls.flatMap(l=>(l.dates||[]).map((d,i)=>({d,v:ir230Venue(l,i)})));
+ if(all.length<2||!all.every(x=>/\bZepp\b/i.test(x.v))||new Set(all.map(x=>x.v)).size<2)return false;
+ const debut=all.map(x=>x.d).sort()[0];
+ const earlier=(state.hostedLives||[]).some(l=>String(l.groupId)===String(g.id)&&!ls.some(x=>String(x.id)===String(l.id))&&(l.dates||[]).some((d,i)=>d<debut&&/\bZepp\b/i.test(ir230Venue(l,i))));
+ return !earlier;
+}
+function ir230PreviouslyPlayedLarge(g,venue,date,excludeIds=[]){
+ const target=String(venue||'').trim().toLowerCase();
+ if(!target||!date)return false;
+ return (state.hostedLives||[]).some(other=>String(other.groupId)===String(g.id)&&!excludeIds.includes(String(other.id))&&(other.dates||[]).some((d,j)=>String(d)<String(date)&&ir230Venue(other,j).trim().toLowerCase()===target&&ir230Cap(other,j)>=10000&&!other.canceled&&!other.cancelled&&!other.cancelledDates?.includes(d)));
+}
+function ir230Large(g,venue,date,excludeIds=[]){return {kind:'large',venue,repeat:ir230PreviouslyPlayedLarge(g,venue,date,excludeIds)};}
+function ir230Milestone(l,i=0){const g=group(l);if(!g)return null;const venue=ir230Venue(l,i);if(ir230Cap(l,i)>=10000)return ir230Large(g,venue,l.dates?.[i]||l.date,[String(l.id)]);
+ const family=tourFamily(l);const ls=family&&family.length>1?family:[l];if(ir230FirstZepp(g,ls))return {kind:'zepp',venue:'Zeppツアー'};
+ return null;}
+function ir230OfficialSuffix(m){if(m?.kind==='zepp')return '私たちがずっと目標として掲げてきたZeppツアー。ここまで歩んでこられたのは、どんな時も支えてくださった皆さまのおかげです。初めて各地のZeppに立てることを心から嬉しく思います。ひとつひとつの会場で、今の私たちの全てをお届けします。';
+ return m?.repeat?`再び${m.venue}で公演を開催できることになりました。前回のステージでいただいた声援や景色は、今も私たちの大切な力になっています。あの日から積み重ねてきた経験と成長を、今回の${m.venue}公演でお見せしたいと思っています。またこの会場で皆さまとお会いできることを心から楽しみにしています。`:`いつか立ちたいと夢見ていた${m.venue}で、ついに公演を開催できることになりました。簡単な道のりではありませんでしたが、応援してくださった皆さまと積み重ねた日々が、このステージに繋がりました。この景色を一緒に見届けてもらえたら嬉しいです。メンバー・スタッフ一同、最高の公演をお届けできるよう準備してまいります。`;}
+function ir230FanReplies(g,m,p){if(!p||!m)return;const place=m.venue;const lines=m.kind==='zepp'?['Zeppツアー来たーー！！😭','ついにZepp全都市！夢みたい','Zeppツアー決定おめでとう！','ここまで大きくなったんだね…','全会場行きたい、絶対行く']:m.repeat?[`また${place}公演やるの！？嬉しすぎる`,`前回の${place}も最高だったから絶対行く`,`${place}に帰ってくるの熱い！`,`前回からどれだけ成長したか楽しみ`,`また${place}で会えるの嬉しい😭`]:[`え、${place}まじ？！`,`ついに${place}！！😭`,`まさか${place}でワンマンが見られるなんて`,`ここまで来たの泣ける…${place}絶対行く`,`夢だった${place}公演が現実になるのすごい`];
+ const count=Math.min(16,Math.max(5,Math.round(irXReactionScale(g)*.35)));
+ for(let i=0;i<count;i++){const line=lines[i%lines.length];const q=post('fan:ir230:'+g.id+':'+p.id+':'+i,'ライブ好き'+(i+1),'@live_fan_'+i,line);if(q)q.replyTo=p.id;}
+ p.comments=Math.max(Number(p.comments)||0,count);
+}
+function ir230MemberText(m,milestone,phase){const venue=milestone.venue;const repeat=!!milestone.repeat;const mb=String(m.mbti||m.MBTI||'ISFP').toUpperCase();const nt=mb[1]==='N',feel=mb[2]==='F',outgoing=mb[0]==='E';
+ const core=repeat?(phase==='day'?`今日はまた${venue}のステージに立てる日！前回とは違う私たちを見せたいです。`:`${venue}公演、ありがとうございました！またこの場所でみんなに会えて本当に嬉しかったです。`):(phase==='day'?`今日はいよいよ${venue}。この場所に立てる日が来たことがまだ信じられないです。`:`${venue}公演、本当にありがとうございました。ずっと目標にしてきたステージから見た景色は忘れません。`);
+ const detail=repeat?(feel?(nt?'前回の景色を思い出しながら、今の私たちらしい新しい思い出を作りたいです。':'あの日も今日も、応援してくれるみんながいることに感謝しています。'):(nt?'前回からの変化や成長を、ステージでしっかり示したいと思います。':'前回の反省も生かして準備してきたことを、今日は届けます。')):(feel?(nt?'何度も想像した景色が今日現実になって、胸がいっぱいです。':'応援してくれる一人ひとりの顔を思い浮かべながら、ここまで来られたことに感謝しています。'):(nt?'ここまでの過程を振り返ると、積み重ねが形になったことを実感しています。':'準備してきた成果を、この大きなステージできちんと届けたいです。'));
+ const last=phase==='day'?(outgoing?'一緒に最高の一日にしようね！！':'緊張もあるけど、一曲ずつ大切に届けます。'):(outgoing?'みんなの声、めちゃくちゃ届いたよ！またこの景色を見ようね！！':'今日の経験を次に繋げて、もっと成長していきます。');
+ return `${core}\n${detail}\n${last}`;
+}
+function announceTourFamily(family){const l=family[0],g=group(l);if(!g)return;const stops=family.map(x=>`📅 ${x.dates?.[0]||''}  📍 ${x.stops?.[0]?.venue||x.venue||'会場未定'}`).join('\n');const milestone=ir230FirstZepp(g,family)?{kind:'zepp',venue:'Zeppツアー'}:family.flatMap(x=>(x.dates||[]).map((d,i)=>ir230Cap(x,i)>=10000?ir230Large(g,ir230Venue(x,i),d, family.map(y=>String(y.id))):null)).find(Boolean);const body=`🎤 ツアー開催決定 🎤\n\n『${l.name||'ツアー'}』の開催が決定しました！\n全公演のチケット販売がスタートしました！\n\n${stops}\n\n${milestone?ir230OfficialSuffix(milestone)+'\n\n':''}各地でお会いできるのを楽しみにしています✨\n\n#${idolXHashName(g.name)}`;const p=post('group:'+g.id,g.name,idolXHandleGroup(g),body);const a=agency();post(a.account,a.name,a.handle,'',p.id);for(const m of g.members||[])post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),'',p.id);fanAnnouncement(l,l.dates?.[0],0,p);ir230FanReplies(g,milestone,p);}
 function tourReady(l){return (l.dates||[]).length>1&&(l.dates||[]).every(d=>{const t=state.hostedLiveTickets?.[String(l.id)+'::'+d];return !!t&&['selling','finished','soldout','sold-out','closed'].includes(String(t.status));});}
-function announceTour(l){const g=group(l);if(!g)return;const dates=l.dates||[];const venues=dates.map((d,i)=>String(l.stops?.[i]?.venue||l.venue||'会場未定').trim());const isTour=new Set(venues).size>1;const stops=dates.map((d,i)=>`📅 ${d}  📍 ${venues[i]}`).join('\n');const period=dates.length?`${dates[0]}〜${dates[dates.length-1]}`:'';const body=isTour?`🎤 ツアー開催決定 🎤\n\n『${l.name||'ツアー'}』の開催が決定しました！\n全公演のチケット販売がスタートしました！\n\n${stops}\n\n各地でお会いできるのを楽しみにしています✨\n\n#${idolXHashName(g.name)}`:`🎤 ${dates.length}days公演開催決定 🎤\n\n『${l.name||g.name+' ライブ'}』\n${period}開催！\n全${dates.length}日程のチケット販売がスタートしました！\n\n📍 ${venues[0]||'会場未定'}\n${stops}\n\n会場でお会いできるのを楽しみにしています✨\n\n#${idolXHashName(g.name)}`;const p=post('group:'+g.id,g.name,idolXHandleGroup(g),body);const a=agency();post(a.account,a.name,a.handle,'',p.id);for(const m of g.members||[])post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),'',p.id);fanAnnouncement(l,dates[0],0,p);}
-function announce(l,date,i){const g=group(l);if(!g)return;const external=l.type==='external'||String(l.id).startsWith('external_');const joint=l.type==='joint';const label=l.name||l.event||l.title||'ライブ';const venue=l.stops?.[i]?.venue||l.venue||'会場未定';const heading=external?'🎤 LIVE出演決定 🎤':joint?'🎤 主催対バン開催決定 🎤':'🎤 ワンマンライブ開催決定 🎤';const action=external?`『${label}』への出演が決定しました！`:`『${label}』の開催が決定しました！`;const body=`${heading}\n\n${action}\n\n📅 ${date}\n📍 ${venue}\n\nぜひ会場でお会いしましょう✨\n\n#${idolXHashName(g.name)}`;const p=post('group:'+g.id,g.name,idolXHandleGroup(g),body);const a=agency();post(a.account,a.name,a.handle,'',p.id);for(const m of g.members||[])post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),'',p.id);fanAnnouncement(l,date,i,p);}
+function announceTour(l){const g=group(l);if(!g)return;const dates=l.dates||[];const venues=dates.map((d,i)=>String(l.stops?.[i]?.venue||l.venue||'会場未定').trim());const isTour=new Set(venues).size>1;const milestone=isTour&&ir230FirstZepp(g,[l])?{kind:'zepp',venue:'Zeppツアー'}:dates.map((d,i)=>ir230Cap(l,i)>=10000?ir230Large(g,ir230Venue(l,i),d,[String(l.id)]):null).find(Boolean);const stops=dates.map((d,i)=>`📅 ${d}  📍 ${venues[i]}`).join('\n');const period=dates.length?`${dates[0]}〜${dates[dates.length-1]}`:'';const body=isTour?`🎤 ツアー開催決定 🎤\n\n『${l.name||'ツアー'}』の開催が決定しました！\n全公演のチケット販売がスタートしました！\n\n${stops}\n\n${milestone?ir230OfficialSuffix(milestone)+'\n\n':''}各地でお会いできるのを楽しみにしています✨\n\n#${idolXHashName(g.name)}`:`🎤 ${dates.length}days公演開催決定 🎤\n\n『${l.name||g.name+' ライブ'}』\n${period}開催！\n全${dates.length}日程のチケット販売がスタートしました！\n\n📍 ${venues[0]||'会場未定'}\n${stops}\n\n会場でお会いできるのを楽しみにしています✨\n\n#${idolXHashName(g.name)}`;const p=post('group:'+g.id,g.name,idolXHandleGroup(g),body);const a=agency();post(a.account,a.name,a.handle,'',p.id);for(const m of g.members||[])post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),'',p.id);fanAnnouncement(l,dates[0],0,p);ir230FanReplies(g,milestone,p);}
+function announce(l,date,i){const g=group(l);if(!g)return;const external=l.type==='external'||String(l.id).startsWith('external_');const joint=l.type==='joint';const label=l.name||l.event||l.title||'ライブ';const venue=l.stops?.[i]?.venue||l.venue||'会場未定';const heading=external?'🎤 LIVE出演決定 🎤':joint?'🎤 主催対バン開催決定 🎤':'🎤 ワンマンライブ開催決定 🎤';const action=external?`『${label}』への出演が決定しました！`:`『${label}』の開催が決定しました！`;const milestone=!external?ir230Milestone(l,i):null;const body=`${heading}\n\n${action}\n\n📅 ${date}\n📍 ${venue}\n\n${milestone?ir230OfficialSuffix(milestone)+'\n\n':''}ぜひ会場でお会いしましょう✨\n\n#${idolXHashName(g.name)}`;const p=post('group:'+g.id,g.name,idolXHandleGroup(g),body);const a=agency();post(a.account,a.name,a.handle,'',p.id);for(const m of g.members||[])post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),'',p.id);fanAnnouncement(l,date,i,p);ir230FanReplies(g,milestone,p);}
 function participants(l,i){const g=group(l);if(!g)return[];const record=String(l.id).startsWith('external_')?l.liveDayRun:l.liveDayRuns?.[i];if(Array.isArray(record?.participatingMemberIds))return(g.members||[]).filter(m=>record.participatingMemberIds.map(String).includes(String(m.id)));if(Array.isArray(record?.stageMemberIds?.perform))return(g.members||[]).filter(m=>record.stageMemberIds.perform.map(String).includes(String(m.id)));const date=l.dates?.[i]||l.date;const hour=parseInt(String(l.stops?.[i]?.time||l.time||'18:00'),10);return(g.members||[]).filter(m=>!((l.ageExcludedByDate?.[date]||l.ageExcludedIds||[]).map(String).includes(String(m.id)))&&(!window.IDOL_BOOKING?.participates||window.IDOL_BOOKING.participates(m,g.id,date,hour,hour+3,'live:'+l.id)));}
-function memberPost(l,date,i,phase){const g=group(l);if(!g)return;const label=l.name||l.event||l.title||'ライブ';for(const m of participants(l,i)){const mb=String(m.mbti||m.MBTI||'ISFP').toUpperCase();const [tone,emoji]=styles[mb]||styles.ISFP;const lead=pick(phase==='day'?openings:closings).replaceAll('{live}',label);const finishTone={ENFP:'楽しすぎてまだ余韻が抜けない！',ENFJ:'みんなと過ごせた時間が宝物になりました。',ENTP:'今日のステージ、どうだった？最高に楽しかった！',ENTJ:'最後まで全力を出し切りました。',ESFP:'めちゃくちゃ盛り上がって最高だったー！',ESFJ:'来てくれたみんな、ありがとう！',ESTP:'今日も全力でぶち上げた！',ESTJ:'無事に終演できました。ありがとうございました。',INFP:'みんなの笑顔を見られて幸せだった…。',INFJ:'今日の景色をずっと覚えていたいです。',INTP:'今日のステージ、やり切れてよかったです。',INTJ:'準備してきたものを届けられました。',ISFP:'緊張したけど、すごく楽しかった。',ISFJ:'会いに来てくれたみんな、本当にありがとう。',ISTP:'今日も自分らしく演奏できました。',ISTJ:'無事に公演を終えられました。ありがとうございます。'};const body=phase==='day'?`${lead}\n${tone} ${emoji}\n#${idolXHashName(g.name)}`:`${lead}\n${finishTone[mb]||'今日は本当にありがとう！'} ${pick(after)} ${emoji}\n#${idolXHashName(g.name)}`;const p=post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),body);if(l.mode!=='regular')fans(g,phase,p);}}
+function memberPost(l,date,i,phase){const g=group(l);if(!g)return;const label=l.name||l.event||l.title||'ライブ';for(const m of participants(l,i)){const mb=String(m.mbti||m.MBTI||'ISFP').toUpperCase();const [tone,emoji]=styles[mb]||styles.ISFP;const lead=pick(phase==='day'?openings:closings).replaceAll('{live}',label);const finishTone={ENFP:'楽しすぎてまだ余韻が抜けない！',ENFJ:'みんなと過ごせた時間が宝物になりました。',ENTP:'今日のステージ、どうだった？最高に楽しかった！',ENTJ:'最後まで全力を出し切りました。',ESFP:'めちゃくちゃ盛り上がって最高だったー！',ESFJ:'来てくれたみんな、ありがとう！',ESTP:'今日も全力でぶち上げた！',ESTJ:'無事に終演できました。ありがとうございました。',INFP:'みんなの笑顔を見られて幸せだった…。',INFJ:'今日の景色をずっと覚えていたいです。',INTP:'今日のステージ、やり切れてよかったです。',INTJ:'準備してきたものを届けられました。',ISFP:'緊張したけど、すごく楽しかった。',ISFJ:'会いに来てくれたみんな、本当にありがとう。',ISTP:'今日も自分らしく演奏できました。',ISTJ:'無事に公演を終えられました。ありがとうございます。'};let body=phase==='day'?`${lead}\n${tone} ${emoji}\n#${idolXHashName(g.name)}`:`${lead}\n${finishTone[mb]||'今日は本当にありがとう！'} ${pick(after)} ${emoji}\n#${idolXHashName(g.name)}`;const milestone=ir230Milestone(l,i);if(milestone){body=ir230MemberText(m,milestone,phase)+'\n#'+idolXHashName(g.name);}const p=post('member:'+m.id,name(m),m.xHandle||idolXHandleMember(m,g),body);if(l.mode!=='regular')fans(g,phase,p);}}
 function entries(){const out=[];for(const l of state.hostedLives||[])for(let i=0;i<(l.dates||[]).length;i++)out.push({l,i,date:l.dates[i],key:String(l.id)+'::'+l.dates[i]});return out;}
 function scan(){const d=data(),t=today();for(const e of entries()){const {l,i,date,key}=e;if(!group(l))continue;const external=l.type==='external'||String(l.id).startsWith('external_');const ticket=state.hostedLiveTickets?.[key];const family=!external?tourFamily(l):null;
 if(family&&family.length>1){const familyKey='announce-tour:'+String(family[0].id).replace(/_city_\d+$/,'');if(!d.keys[familyKey]&&family.every(x=>(x.dates||[]).every(dt=>['selling','finished','soldout','sold-out','closed'].includes(String(state.hostedLiveTickets?.[String(x.id)+'::'+dt]?.status))))){d.keys[familyKey]=true;announceTourFamily(family);}}
@@ -5112,7 +5218,7 @@ function datePlusMonths(n){const d=new Date(state.year,state.month-1,1);const or
 function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismissed&&!m.idolRoadResumePending&&m.activityStatus!=='活動休止'&&!m.idolRoadPauseUntil);if(!all.length)return;const eligible=all.filter(({m})=>{const a=ageOf(m);return a!==null&&a<20});let pool=['熱愛','ファンとの私的交流','ファンとの私的交流','熱愛'];if(eligible.length)pool.push('未成年飲酒','未成年喫煙');const type=pool[rnd(0,pool.length-1)];const baseCandidates=(type==='未成年飲酒'||type==='未成年喫煙')?eligible:all;const candidates=baseCandidates.filter(({m})=>!incidentList().some(inc=>String(inc.memberId)===String(m.id)&&String(inc.date).slice(0,4)===String(state.year)));if(!candidates.length)return;const chosen=candidates[rnd(0,candidates.length-1)],g=chosen.g,m=chosen.m;const truth=Math.random()<.62;const inc={id:'incident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),date:date(),groupId:g.id,memberId:m.id,type,truth:truth?'unconfirmed_true':'unconfirmed_false',status:'未確認',posts:[],publishedMagazineIds:[]};incidentList().unshift(inc);ensureIncidentNotification(inc,false);const useMagazine=Number(m.popularity||m.fame||0)>=70;
  if(useMagazine){const mag=MAG[rnd(0,MAG.length-1)];inc.posts.push(xPost(mag.id,mag.name,mag.handle,magText(mag,inc),{incidentId:inc.id,incidentType:type,kind:'magazine',groupId:g.id}).id);inc.publishedMagazineIds.push(mag.id);}
  else inc.posts.push(xPost(LEAK.id,LEAK.name,LEAK.handle,rumorText(type,m,g),{incidentId:inc.id,incidentType:type,kind:'leak',groupId:g.id}).id);
- // 事件と同時にファン・一般ユーザーの反応を生成。Xのおすすめ欄に投稿として流す。
+ // 事件と同時にファン・一般ユーザーの反応を生成。暴露元投稿への返信にまとめる。
  const fanBodies=[
   `${memberName(m)}の件、まだ事実確認中なのに決めつけるのは違うと思う。`,
   `え、${groupName(g)}の${memberName(m)}って本当なの？公式からの説明を待ちたい。`,
@@ -5127,7 +5233,8 @@ function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismisse
  for(let i=0;i<fanCount;i++){
   const handle='@idol_fan_'+rnd(1000,99999)+'_'+i;
   const names=['みお','さくらの推し活','あお','現場帰り','なな','しおり','はる','りん','通りすがり','音楽好き','ゆず','日常メモ'];const name=names[(i+inc.id.length)%names.length];const p=xPost('fan:'+inc.id+':'+i,name,handle,fanBodies[i%fanBodies.length],{incidentId:inc.id,incidentType:type,kind:'fan',groupId:g.id});
-  p.likes=rnd(0,Math.max(1,fanCount*3));p.organicReposts=rnd(0,Math.max(1,Math.round(fanCount*.7)));
+  if(p)p.replyTo=inc.posts[0]||null;
+  if(p){p.likes=rnd(0,Math.max(1,fanCount*3));p.organicReposts=rnd(0,Math.max(1,Math.round(fanCount*.7)));}
  }
  initialIncidentImpact(inc);
  const mb=String(m.mbti||'');
@@ -6519,11 +6626,13 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
   const types=e.falseClaim?[0,2,4]:e.severity==='小'?[0,0,1,2]:e.severity==='中'?[0,1,1,2,3]:[0,1,1,2,2,3,3];
   const posts=state.idolXPosts??=[];
   const subject=name(m),groupName=g.name||'所属グループ';
+  const root=(e.kind==='statement'?posts.find(p=>p.id===e.ref.postId):posts.find(p=>p.incidentId===e.ref.id&&(p.incidentKind==='magazine'||p.incidentKind==='leak')))||null;
+
   for(let i=0;i<count;i++){
    const h=hash(key+':'+i),type=sample(types,h),kind=(type===2||type===3)?'general':'fan',body=sample(discussions[type],Math.floor(h/97));
    const author=kind==='general'?sample(['日常のつぶやき','ニュースを見た人','通りすがり','タイムライン観測','話題を追う人'],Math.floor(h/11)):sample(['推しを見守りたい','現場通い','アイドル好き','今日も推し活','ファンのひとり'],Math.floor(h/17));
    const reactions=Math.max(1,Math.round((1+rankCount(g,m)*3+({小:1,中:4,大:9}[e.severity]||4))*(.5+(h%100)/100)));
-   posts.unshift({id:'irsc159_'+h+'_'+age+'_'+i,account:kind+':irsc159:'+e.id+':'+age+':'+i,name:author,handle:'@ir_fan_'+h.toString(36),body:`${subject}（${groupName}）の件、${body}`,date:day,likes:reactions,reposts:Math.round(reactions*.07),organicReposts:Math.round(reactions*.07),incidentId:e.kind==='exposure'?e.ref.id:null,irSnsFireId:e.kind==='statement'?e.ref.id:null,irScandalWaveV159:true});
+   posts.unshift({id:'irsc159_'+h+'_'+age+'_'+i,account:kind+':irsc159:'+e.id+':'+age+':'+i,name:author,handle:'@ir_fan_'+h.toString(36),body:`${subject}（${groupName}）の件、${body}`,date:day,likes:reactions,reposts:Math.round(reactions*.07),organicReposts:Math.round(reactions*.07),incidentId:e.kind==='exposure'?e.ref.id:null,irSnsFireId:e.kind==='statement'?e.ref.id:null,irScandalWaveV159:true,replyTo:root?.id||null});
   }
   ledger[key]=count;
   return true;
@@ -6863,6 +6972,61 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  };
  const priorSave=save;save=function(...args){checkQuotes();return priorSave.apply(this,args);};
  window.IR_X_CHANGE_NOTICES_V192={checkQuotes,tvNote};
+})();
+</script>
+
+<script id="ir-x-context-existing-v233">
+/* Clean specifically mismatched transient reactions already stored in saves. */
+(function(){
+ 'use strict';
+ function isStage(p){return p && /ライブ|ステージ|公演|対バン|フェス|セトリ|チケット|ツアー|出演|リリース|放送|配信/.test(String(p.body||''));}
+ function mismatch(t){return /日常を共有|日常の話|何気ない(話|投稿|言葉)|何気ない話|この子誰|写真|ビジュアル|表情|動画|見入っちゃった|おすすめに流れてきた|こういうつぶやき/.test(String(t||''));}
+ const lines=['ライブ情報うれしい！','このステージ楽しみ！','次の公演も行きたい','予定確認した！','応援してる！','絶対見に行きたい！','会場で会えるの楽しみ','今回のライブも期待してる！'];
+ function tidy(){
+  const posts=Array.isArray(state.idolXPosts)?state.idolXPosts:[];
+  const sources=new Map(posts.map(p=>[String(p.id),p]));
+  let changed=0;
+  const community=state.idolXCommunity?.posts||[];
+  for(const p of community){
+   const original=sources.get(String(p.quoteOf||''));
+   if(isStage(original)&&mismatch(p.body)){
+    let n=0;for(const ch of String(p.id||''))n=(n*31+ch.charCodeAt(0))>>>0;
+    p.body=lines[n%lines.length];changed++;
+   }
+  }
+  for(const p of posts){
+   if(!isStage(p)||!Array.isArray(p.communityComments))continue;
+   for(const c of p.communityComments){
+    if(mismatch(c.body)){
+     let n=0;for(const ch of String(c.id||c.handle||''))n=(n*31+ch.charCodeAt(0))>>>0;
+     c.body=lines[n%lines.length];changed++;
+    }
+   }
+  }
+  return changed;
+ }
+ const prev=window.__idolRoadXCommunity;
+ if(typeof prev==='function') window.__idolRoadXCommunity=function(){const r=prev.apply(this,arguments);try{if(tidy()&&typeof save==='function')save();}catch(e){console.warn('v233 context migration',e);}return r;};
+ try{tidy();}catch(e){console.warn('v233 context migration',e);}
+ window.IR_X_CONTEXT_REPAIR_V233={tidy};
+})();
+</script>
+
+<script id="ir-x-account-rebuild-hook-v234">
+(function(){'use strict';
+ const api=window.IR_X_ACCOUNT_REBUILD_V234;if(!api)return;
+ const migrate=()=>{try{return api.migrate()}catch(err){console.error('v234 account rebuild',err);return false}};
+ const originalCommunity=window.__idolRoadXCommunity;
+ if(typeof originalCommunity==='function')window.__idolRoadXCommunity=function(){const result=originalCommunity.apply(this,arguments);migrate();return result};
+ const originalPosts=window.__idolRoadXGetPosts;
+ if(typeof originalPosts==='function')window.__idolRoadXGetPosts=function(){const result=originalPosts.apply(this,arguments);migrate();return result};
+ const originalComments=window.__idolRoadXComments;
+ if(typeof originalComments==='function')window.__idolRoadXComments=function(){const result=originalComments.apply(this,arguments);migrate();if(Array.isArray(result))for(const c of result)api.assign(c,true);return result};
+ const originalAdd=window.idolXAdd;
+ if(typeof originalAdd==='function')window.idolXAdd=function(){const result=originalAdd.apply(this,arguments);if(result)api.assign(result);return result};
+ const oldAddDay=window.addDay;
+ if(typeof oldAddDay==='function')window.addDay=function(){const result=oldAddDay.apply(this,arguments);if(migrate()&&typeof save==='function')save();return result};
+ if(migrate()&&typeof save==='function')save();
 })();
 </script>
 </body></html>
