@@ -8121,11 +8121,13 @@ window.IR_TOUR_PROGRESS_V254={reconcileTours,groupTabs};
   if(!list.length&&!buzzes.length)return;
   const box=document.createElement('section');box.id='ir-social-status-v256';box.style.cssText='border:1px solid #5a6583;border-radius:14px;padding:16px;margin:14px 0;background:#16213b;color:#f3f6ff;line-height:1.7';
   const h=document.createElement('h3');h.textContent='SNS・炎上の状況';h.style.margin='0 0 8px';box.appendChild(h);
-  for(const e of list){const line=document.createElement('div');line.textContent='🔥 '+describe(e);box.appendChild(line)}
+  // Keep the Home layout compact even when many posts are simultaneously buzzing.
+  const entries=document.createElement('div');entries.className='ir-social-status-scroll';entries.style.cssText='max-height:220px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding-right:6px';box.appendChild(entries);
+  for(const e of list){const line=document.createElement('div');line.textContent='🔥 '+describe(e);entries.appendChild(line)}
   const levels=['','小バズ','中バズ','大バズ','超大バズ'];
   for(const buzz of buzzes){
    const id=String(buzz.account).slice(7),g=(state.groups||[]).find(g=>(g.members||[]).some(m=>String(m.id)===id));const m=person(g,id);
-   const line=document.createElement('div');line.textContent=`📈 ${m?.stageName||m?.name||'メンバー'}：${levels[buzz.memberBuzzEffect.level]||'SNSバズ'}（進行中）`;box.appendChild(line);
+   const line=document.createElement('div');line.textContent=`📈 ${m?.stageName||m?.name||'メンバー'}：${levels[buzz.memberBuzzEffect.level]||'SNSバズ'}（進行中）`;entries.appendChild(line);
   }
   // Position the status immediately BELOW today's schedule, not at the top of Home.
   const schedule=parent.querySelector('.ir-home-scroll');
