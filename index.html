@@ -3482,7 +3482,8 @@ function processMemberBuzzAwards(){
    const rule=memberBuzzLevels[level];
    post.memberBuzzEffect={level,startDate:day,remaining:rule.min+Math.floor(Math.random()*(rule.max-rule.min+1)),lastAwardDate:null};
    // Announce only fresh transitions; existing historical buzz stays unchanged.
-   const fresh=String(post.date||'').slice(0,10)===day || (previous&&previous.startDate&&previous.startDate<=day);
+   const ageDays=Math.floor((new Date(day+'T12:00:00')-new Date(String(post.date||'').slice(0,10)+'T12:00:00'))/86400000);
+   const fresh=ageDays>=0&&ageDays<=14; // Likes can reach a new buzz tier days after posting.
    if(fresh){
     const group=(state.groups||[]).find(g=>(g.members||[]).some(m=>String(m.id)===String(post.account.slice(7))));
     const member=group?.members?.find(m=>String(m.id)===String(post.account.slice(7)));
@@ -7781,17 +7782,25 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  const requirements={4:1,5:2,6:3};
  const rankNames={4:'B → A',5:'A → S',6:'S → SS'};
  const tip={
-  4:'実動員3,000人以上・動員率95%以上のライブや、CD10万枚などのA相当実績を1種類獲得。',
-  5:'ライブ1万人以上・95%以上、5都市すべて1,000人以上で95%以上のツアー、大バズ、CD50万枚、配信50万件、X50万人、ドラマ大ヒット、個人レギュラー1クール完了など。',
-  6:'ライブ3万人以上・95%以上、登録済みアリーナで5都市すべて95%以上のツアー、超大バズ、CD100万枚、配信100万件、X150万人、映画大ヒット、個人レギュラー2クール完了など。'
+  group:{
+   4:'実動員3,000人以上・動員率95%以上のライブ、グループのCD10万枚など。',
+   5:'ライブ1万人以上・95%以上、5都市すべて1,000人以上・95%以上のツアー、大バズ、CD50万枚、配信50万件、グループX50万人など。',
+   6:'ライブ3万人以上・95%以上、登録済みアリーナ対象会場の5都市ツアー（全公演95%以上）、超大バズ、CD100万枚、配信100万件、グループX150万人など。'
+  },
+  member:{
+   4:'実動員3,000人以上・動員率95%以上のライブ、グループのCD10万枚など。',
+   5:'ライブ1万人以上・95%以上、5都市すべて1,000人以上・95%以上のツアー、大バズ、CD50万枚、配信50万件、本人X50万人、ドラマ大ヒット、本人のゴールデンバラエティ1クール完了など。',
+   6:'ライブ3万人以上・95%以上、登録済みアリーナ対象会場の5都市ツアー（全公演95%以上）、超大バズ、CD100万枚、配信100万件、本人X150万人、映画大ヒット、本人のレギュラー継続2クール完了など。'
+  }
  };
+ const personalCategories=new Set(['individual_x','drama','film','variety_regular']);
  const escapeText=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function findAchievements(p,tier){
   const since=p.needsFresh?p.demotedAt:null;
   return (p.achievements||[]).filter(a=>Number(a.tier)>=tier && (!since||String(a.date||'')>String(since)) && !(a.category==='film'&&tier===5) && !(a.category==='drama'&&tier===6));
  }
  function oneRank(o,group,tier){
-  const p=irPopularityEnsure(o,group),rank=Number(p.rank)||0,eligible=rank>=tier+1,active=rank===tier,ach=findAchievements(p,tier),cats=new Set(ach.map(a=>a.category)),need=requirements[tier];
+  const p=irPopularityEnsure(o,group),rank=Number(p.rank)||0,eligible=rank>=tier+1,active=rank===tier,ach=findAchievements(p,tier).filter(a=>!group||!personalCategories.has(a.category)),cats=new Set(ach.map(a=>a.category)),need=requirements[tier];
   const live=ach.some(a=>a.category==='live'),individual=ach.some(a=>a.individual),xp=p.xp>=1000;
   const line=(ok,msg)=>`<div style="margin:3px 0">${ok?'✅':'⬜'} ${escapeText(msg)}</div>`;
   const met=Array.from(cats).map(c=>labels[c]||c).join('・');
@@ -7802,7 +7811,7 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
   ${tier>=5?line(eligible||live,'ライブ実績：対象ランク相当の実動員・動員率95%以上'):''}
   ${tier>=5&&!group?line(eligible||individual,'個人実績：本人のフォロワー・出演作品の大ヒット・レギュラー出演など'):''}
   ${met?`<div style="font-size:.9em;color:var(--muted,#666)">✅ 記録済みの実績：${escapeText(met)}</div>`:'<div style="font-size:.9em;color:var(--muted,#666)">記録済みの対象実績：なし</div>'}
-  <div style="font-size:.9em;margin-top:5px">対象となる例：${escapeText(tip[tier])}</div></section>`;
+  <div style="font-size:.9em;margin-top:5px">対象となる例：${escapeText((group?tip.group:tip.member)[tier])}</div></section>`;
  }
  function guide(){
   if(state.tab!=='ホーム')return;
@@ -7814,7 +7823,7 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
    html+=`<div style="margin:18px 0 9px"><h3 style="margin-bottom:5px">グループ：${escapeText(g.name)}</h3>${[4,5,6].map(t=>oneRank(g,true,t)).join('')}</div>`;
    for(const m of g.members||[]){if(m.idolRoadDismissed)continue;html+=`<details style="margin:8px 0;border:1px solid #ddd;border-radius:8px;padding:9px"><summary style="font-weight:bold;cursor:pointer">${escapeText(m.stageName||m.name)}｜個別人気度：${escapeText((typeof GRADE_ORDER!=='undefined'?GRADE_ORDER[irPopularityEnsure(m,false).rank]:'')||'')}</summary>${[4,5,6].map(t=>oneRank(m,false,t)).join('')}</details>`;}
   }
-  html+='<h3>判定の注意点・対象外になるケース</h3><p>・ライブは予測ではなく実際の動員数で判定。動員率が95%未満なら対象外。<br>・ツアーは5都市以上かつ全公演終了後に判定。1公演でも会場条件や動員率を満たさなければ対象外。<br>・Sツアーは全会場1,000人以上、SSツアーは登録済みアリーナ対象会場。名称に「アリーナ」がなくても対象会場なら有効。<br>・同じ実績の種類を何度達成しても、必要な「異なる種類」は1つとして数える。<br>・個人人気度A→S・S→SSには、本人固有の実績も必要。単発バラエティはレギュラー実績にならない。<br>・ゴールデンバラエティの初レギュラーは1クール完了でS実績、継続2クール完了でSS実績。<br>・ドラマ大ヒットはS用、映画大ヒットはSS用。<br>・降格後の再昇格には降格後に獲得した実績が必要。</p>';
+  html+='<h3>判定の注意点・対象外になるケース</h3><p>・ライブは予測ではなく実際の動員数で判定。動員率が95%未満なら対象外。<br>・ツアーは5都市以上かつ全公演終了後に判定。1公演でも会場条件や動員率を満たさなければ対象外。<br>・Sツアーは全会場1,000人以上、SSツアーは登録済みアリーナ対象会場。名称に「アリーナ」がなくても対象会場なら有効。<br>・同じ実績の種類を何度達成しても、必要な「異なる種類」は1つとして数える。<br>・ドラマ・映画の大ヒット、ゴールデンバラエティの個人レギュラー、本人Xフォロワーは個人専用実績で、グループ昇格には数えない。<br>・個人人気度A→S・S→SSには、本人固有の実績も必要。単発バラエティはレギュラー実績にならない。<br>・ゴールデンバラエティの初レギュラーは1クール完了でS実績、継続2クール完了でSS実績。<br>・ドラマ大ヒットはS用、映画大ヒットはSS用。<br>・降格後の再昇格には降格後に獲得した実績が必要。</p>';
   block.innerHTML=html;root.appendChild(block);
  }
  const oldRender=render;
@@ -7825,4 +7834,117 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  window.IR_RETENTION_GUIDE_V253={cleanupMail,guide,mailExpired};
 })();
 </script>
+<script id="ir-tour-progress-group-buttons-v254">
+(function(){'use strict';
+// Tour bookings may be stored as one live per city. Reconcile the completed series as a whole.
+function reconcileTours(){
+ if(!state||!Array.isArray(state.hostedLives)||!Array.isArray(state.groups))return false;
+ const now=typeof today==='function'?today():`${state.year}-${String(state.month).padStart(2,'0')}-${String(state.day).padStart(2,'0')}`;
+ const series=new Map();
+ for(const l of state.hostedLives){if(l?.mode!=='tour'||!l.groupId)continue;
+  // Group records from the same booking, not unrelated tours with an identical title.
+  const id=String(l.id||'').replace(/_city_\d+$/,'');
+  const key=String(l.groupId)+'|'+id;
+  if(!series.has(key))series.set(key,[]);
+  series.get(key).push(l);
+ }
+ let changed=false;
+ for(const [key,lives] of series){
+  const g=state.groups.find(g=>String(g.id)===String(lives[0].groupId));if(!g)continue;
+  const entries=[];
+  for(const l of lives)for(let i=0;i<(l.dates||[]).length;i++){
+    const date=String(l.dates[i]),stop=l.stops?.[i]||{},f=l.attendanceForecasts?.[i]||{};
+    const run=l.liveDayRuns?.[i]||l.liveDayRuns?.[String(i)]||{};
+    // Executed attendance is authoritative when present; forecasts may be stale.
+    const act=Number.isFinite(Number(run.actual))&&run.stage==='finished'?Number(run.actual):Number(f.actual);
+    const cap=Number(stop.capacity||f.capacity||l.capacity||0);
+    entries.push({date,city:String(stop.pref||l.pref||stop.city||stop.cityName||stop.area||'').trim(),venue:String(stop.venue||l.venue||''),capacity:cap,actual:act,done:run.stage==='finished'||l.finished===true});
+  }
+  if(entries.length<5||entries.some(e=>!e.done||e.date>now))continue;
+  const locations=new Set(entries.map(e=>e.city).filter(Boolean));
+  if(locations.size<5)continue;
+  if(!entries.every(e=>e.capacity>=1000&&e.actual>=.95*e.capacity))continue;
+  const tourId=key.split('|').slice(1).join('|');
+  for(const owner of [g,...(g.members||[])])for(const tier of [4,5]){
+    if(typeof irPopAchievement==='function'){
+      if(irPopAchievement(owner,owner===g,'national_tour',tier,tourId,false))changed=true;
+    }
+  }
+  // Do not touch historical ranks or XP; normal promotion rules remain authoritative.
+ }
+ return changed;
+}
+function groupTabs(){
+ if(state.tab!=='ホーム')return;
+ const guide=document.getElementById('irPopularityGuide251');
+ if(!guide)return;
+ const groups=Array.isArray(state.groups)?state.groups:[];
+ if(!groups.length)return;
+ let active=String(state.irPopularitySelectedGroup254||groups[0].id);
+ if(!groups.some(g=>String(g.id)===active))active=String(groups[0].id);
+ const header=document.createElement('div');header.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin:12px 0';
+ const heading=Array.from(guide.querySelectorAll('h3')).find(n=>n.textContent?.startsWith('グループ：'));
+ if(!heading)return;
+ for(const g of groups){
+  const b=document.createElement('button');b.type='button';b.textContent=g.name;
+  b.style.cssText='padding:10px 14px;border:1px solid #63738c;border-radius:9px;cursor:pointer;min-height:42px';
+  const selected=String(g.id)===active;
+  b.setAttribute('aria-pressed',String(selected));
+  if(selected){b.style.background='#304f79';b.style.color='white';}
+  b.onclick=function(){state.irPopularitySelectedGroup254=String(g.id); if(typeof save==='function')save(); const old=guide.querySelector('#irPopularityGroupButtons254');if(old)old.remove();groupTabs();};
+  header.append(b);
+ }
+ header.id='irPopularityGroupButtons254';
+ const original=guide.querySelector('#irPopularityGroupButtons254');if(original)original.remove();
+ const h=guide.querySelector('h2');if(h)h.after(header);
+ // Only hide entire group sections; the common notes remain visible.
+ const all=Array.from(guide.children);
+ const starts=all.filter(el=>el.matches?.('div')&&el.querySelector?.('h3')?.textContent?.startsWith('グループ：'));
+ // In v253 members are direct <details> siblings after the group heading <div>.
+ let current=null;
+ for(const el of all){
+  if(starts.includes(el)){current=el.querySelector('h3').textContent.replace(/^グループ：/,'').trim();}
+  if(current && (starts.includes(el)||el.tagName==='DETAILS')){
+    const found=groups.find(g=>g.name===current);
+    el.style.display=found&&String(found.id)===active?'':'none';
+  }
+ }
+}
+let running=false;
+const priorRender=render;
+render=function(){
+ if(!running){running=true;try{if(reconcileTours()&&typeof save==='function')save()}catch(e){console.error('v254 tours',e)}finally{running=false}}
+ const result=priorRender.apply(this,arguments);
+ try{groupTabs()}catch(e){console.error('v254 group tabs',e)}
+ return result;
+};
+try{if(reconcileTours()&&typeof save==='function')save()}catch(e){console.error('v254 initial tours',e)}
+window.IR_TOUR_PROGRESS_V254={reconcileTours,groupTabs};
+})();
+</script>
+
+<script id="ir-scandal-buzz-status-v256">
+(function(){'use strict';
+ const diff=(a,b)=>Math.floor((new Date(String(b)+'T12:00:00')-new Date(String(a)+'T12:00:00'))/86400000);
+ const active=e=>{if(!e?.date)return false;const age=diff(e.date,today());return age>=0&&age<({小:2,中:4,大:7}[e.severity]||4)};
+ const person=(g,id)=>(g?.members||[]).find(m=>String(m.id)===String(id));
+ function current(){const all=[...(state.idolRoadIncidents||[]),...(state.irSnsFire?.events||[])];return all.filter(active).sort((a,b)=>String(b.date).localeCompare(String(a.date)));}
+ function describe(e){const g=(state.groups||[]).find(g=>String(g.id)===String(e.groupId));const m=person(g,e.memberId);return `${m?.stageName||m?.name||'メンバー'}：${e.type||e.kind||'SNS発言'}／${e.severity||'中'}規模（${e.date}発生）`;}
+ function status(){if(state.tab!=='ホーム')return;const parent=document.getElementById('content');if(!parent)return;
+  const old=document.getElementById('ir-social-status-v256');if(old)old.remove();
+  const box=document.createElement('section');box.id='ir-social-status-v256';box.style.cssText='border:1px solid #5a6583;border-radius:14px;padding:16px;margin:14px 0;background:#16213b;color:#f3f6ff;line-height:1.7';
+  const h=document.createElement('h3');h.textContent='SNS・炎上の状況';h.style.margin='0 0 8px';box.appendChild(h);
+  const list=current();const p=document.createElement('p');p.style.margin='0';p.textContent=list.length?`現在炎上中：${list.length}件`:'現在進行中の炎上：なし';box.appendChild(p);
+  for(const e of list){const line=document.createElement('div');line.textContent='🔥 '+describe(e);box.appendChild(line)}
+  const latest=[...(state.idolRoadIncidents||[]),...(state.irSnsFire?.events||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+  if(!list.length&&latest){const line=document.createElement('div');line.style.opacity='.8';line.textContent='直近の炎上：'+describe(latest)+'（終了）';box.appendChild(line)}
+  const buzz=(state.idolXPosts||[]).filter(p=>p.memberBuzzEffect&&diff(p.date,today())>=0&&diff(p.date,today())<=14).sort((a,b)=>String(b.memberBuzzEffect?.startDate||b.date).localeCompare(String(a.memberBuzzEffect?.startDate||a.date)))[0];
+  if(buzz){const g=(state.groups||[]).find(g=>(g.members||[]).some(m=>String(m.id)===String(buzz.account||'').slice(7)));const m=person(g,String(buzz.account||'').slice(7));const levels=['','小バズ','中バズ','大バズ','超大バズ'];const l=document.createElement('div');l.textContent=`📈 最近のメンバーSNSバズ：${m?.stageName||m?.name||'メンバー'}／${levels[buzz.memberBuzzEffect.level]||'バズ'}`;box.appendChild(l)}
+  parent.insertBefore(box,parent.firstChild);
+ }
+ const base=render;render=function(){const result=base.apply(this,arguments);try{status()}catch(e){console.warn('v256 status',e)}return result};
+ window.IR_SOCIAL_STATUS_V256={current,status};
+})();
+</script>
+
 </body></html>
