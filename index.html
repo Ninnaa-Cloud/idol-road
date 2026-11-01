@@ -2961,7 +2961,7 @@ function irXIncidentActiveV246(e){
  return age>=0&&age<({小:2,中:4,大:7}[e.severity]||4);
 }
 let xActiveHashtag=null;function draw(){try{return drawInternal()}catch(err){console.error('IDOL ROAD X draw',err);root.innerHTML='<div style="padding:24px;color:#111"><h2>Xの表示を読み込めませんでした</h2><p>投稿の描画中に問題が発生しました。画面を閉じて再度開いてください。</p></div>';}}function drawInternal(){if(app==='X'){
-const gamePosts=window.__idolRoadXGetPosts?.()||[];const allPosts=[...gamePosts,...posts];const selectedPosts=xActiveHashtag?allPosts.map((p,i)=>({p,i})).filter(({p})=>{const base=p.repostOf?(gamePosts.find(q=>q.id===p.repostOf)||p):p;return String(base.body||'').split(/\s+/).some(w=>w==='#'+xActiveHashtag)}):detail>=0?[{p:allPosts[detail],i:detail}]:allPosts.map((p,i)=>({p,i}));const officialPosts=selectedPosts.filter(({p})=>{const id=String(p.account||'');return id==='agency'||id.startsWith('group:')||id.startsWith('member:')});const postHtml=(detail>=0||xActiveHashtag?selectedPosts.map(({p,i})=>xPostMarkup(p,i)).join(''):xFeedMode==='following'?officialPosts.filter(({p})=>idolXVisibleFanQuote(p)).slice(0,150).map(({p,i})=>xPostMarkup(p,i)).join(''):([...selectedPosts.filter(({p})=>{const id=String(p.account||'');return id!=='agency'&&!id.startsWith('group:')&&!id.startsWith('member:')&&(idolXVisibleFanQuote(p)||irXScandalSourceRankV245(p,irXActiveScandalSourceIdsV245()))}).map(({p,i})=>({p,i,community:false})),...irXSafeCommunityPosts().filter(idolXVisibleFanQuote).map(p=>({p,community:true}))].sort((a,b)=>{const pinned=irXActiveScandalSourceIdsV245();return irXScandalSourceRankV245(b.p,pinned)-irXScandalSourceRankV245(a.p,pinned)||String(b.p.date||'').localeCompare(String(a.p.date||''))||String(b.p.id||'').localeCompare(String(a.p.id||''));}).slice(0,150).map(x=>x.community?xCommunityMarkup(x.p):xPostMarkup(x.p,x.i)).join('')))||'<p style="padding:24px">該当する投稿はありません</p>';
+const gamePosts=window.__idolRoadXGetPosts?.()||[];const allPosts=[...gamePosts,...posts];const selectedPosts=xActiveHashtag?allPosts.map((p,i)=>({p,i})).filter(({p})=>{const base=p.repostOf?(gamePosts.find(q=>q.id===p.repostOf)||p):p;return idolXVisibleFanQuote(p)&&String(base.body||'').split(/\s+/).some(w=>w==='#'+xActiveHashtag)}):detail>=0?[{p:allPosts[detail],i:detail}]:allPosts.map((p,i)=>({p,i}));const officialPosts=selectedPosts.filter(({p})=>{const id=String(p.account||'');return id==='agency'||id.startsWith('group:')||id.startsWith('member:')});const postHtml=(detail>=0||xActiveHashtag?selectedPosts.map(({p,i})=>xPostMarkup(p,i)).join(''):xFeedMode==='following'?officialPosts.filter(({p})=>idolXVisibleFanQuote(p)).slice(0,150).map(({p,i})=>xPostMarkup(p,i)).join(''):([...selectedPosts.filter(({p})=>{const id=String(p.account||'');return id!=='agency'&&!id.startsWith('group:')&&!id.startsWith('member:')&&(idolXVisibleFanQuote(p)||irXScandalSourceRankV245(p,irXActiveScandalSourceIdsV245()))}).map(({p,i})=>({p,i,community:false})),...irXSafeCommunityPosts().filter(idolXVisibleFanQuote).map(p=>({p,community:true}))].sort((a,b)=>{const pinned=irXActiveScandalSourceIdsV245();return irXScandalSourceRankV245(b.p,pinned)-irXScandalSourceRankV245(a.p,pinned)||String(b.p.date||'').localeCompare(String(a.p.date||''))||String(b.p.id||'').localeCompare(String(a.p.id||''));}).slice(0,150).map(x=>x.community?xCommunityMarkup(x.p):xPostMarkup(x.p,x.i)).join('')))||'<p style="padding:24px">該当する投稿はありません</p>';
 const main=page==='プロフィール'?xProfileContent():`<div class="sns-top">${xActiveHashtag?`<button data-hashtag-back>← 戻る</button> #${esc(xActiveHashtag)}`:esc(page)}</div>${page==='ホーム'&&detail<0&&!xActiveHashtag?`<div style="display:flex;border-bottom:1px solid #ddd"><button data-x-feed="recommended" style="flex:1;padding:13px;background:transparent;border:0;color:#111;font-weight:${xFeedMode==='recommended'?'bold':'normal'}">おすすめ</button><button data-x-feed="following" style="flex:1;padding:13px;background:transparent;border:0;color:#111;font-weight:${xFeedMode==='following'?'bold':'normal'}">フォロー中</button></div>`:''}${detail>=0&&!xActiveHashtag?'<div class="sns-detail"><button data-back>← 戻る</button><h3>投稿の詳細</h3></div>':''}${postHtml}${detail>=0?xCommentMarkup(allPosts[detail]):''}`;
 root.innerHTML=`<div class="sns-shell"><nav class="sns-side"><h1>𝕏</h1>${['ホーム','プロフィール'].map(x=>`<button data-page="${x}">${x}</button>`).join('')}</nav><main class="sns-feed">${main}</main><aside class="sns-trends"><h3>話題のトピック</h3><p>#アイドルライブ</p><p>#新曲公開</p><p>#推し活</p></aside></div>`}
 
@@ -7762,6 +7762,67 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  const book=window.IDOL_BOOKING;if(book){const prevList=book.list.bind(book),prevP=book.participates.bind(book);const solo=()=>R().flatMap(r=>['active','renewOffered','completed'].includes(r.status)?r.sessions.filter(s=>s.date>=now()||s.done).map(s=>({id:'variety-regular:'+s.id,groupId:String(r.groupId),memberId:String(r.memberId),date:s.date,start:Number(r.slot.slice(0,2))-1,end:Number(r.slot.slice(6,8)),kind:'ir-solo-priority',title:r.name})):[]);book.list=function(){return prevList().concat(solo())};book.participates=function(m,gid,date,start=0,end=24,bookingId=null){if(!prevP(m,gid,date,start,end,bookingId))return false;return !solo().some(x=>x.groupId===String(gid)&&x.memberId===String(m.id??m)&&x.date===date&&x.start<end&&start<x.end&&String(bookingId)!==x.id);};}
  window.IR_VARIETY_REGULAR_V252={tryDraw,daily,records:R,evaluate,prob,renewProb,answer,performSession};
  try{daily()}catch(e){console.error('Regular init',e)}
+})();
+</script>
+<script id="ir-mail-retention-popularity-progress-v253">
+(function(){'use strict';
+ const mailDay=(v)=>{const d=new Date(String(v||'').slice(0,10)+'T12:00:00');return Number.isFinite(d.getTime())?d:null;};
+ const mailExpired=(v)=>{const d=mailDay(v);if(!d)return false;const now=mailDay(today());if(!now)return false;const anniversary=new Date(d);anniversary.setFullYear(anniversary.getFullYear()+1);return now>=anniversary;};
+ function cleanupMail(){
+  let changed=false;
+  if(Array.isArray(state.mailItems)){const before=state.mailItems.length;state.mailItems=state.mailItems.filter(m=>!mailExpired(m.date));changed ||= before!==state.mailItems.length;}
+  // Legacy outbox migration must not recreate expired sent messages.
+  if(Array.isArray(state.outbox)){const before=state.outbox.length;state.outbox=state.outbox.filter(m=>!mailExpired(m.date));changed ||= before!==state.outbox.length;}
+  return changed;
+ }
+ const oldMailItems=mailItems;
+ mailItems=function(){cleanupMail();const items=oldMailItems.apply(this,arguments);const count=items.length;state.mailItems=items.filter(m=>!mailExpired(m.date));return state.mailItems;};
+ const labels={live:'ライブ動員',national_tour:'5都市ツアー',arena_tour:'アリーナ5都市ツアー',cd:'CD売上',digital_dl:'楽曲配信',song_buzz:'楽曲バズ',group_x:'グループXフォロワー',individual_x:'本人Xフォロワー',drama:'ドラマの大ヒット',film:'映画の大ヒット',variety_regular:'ゴールデンバラエティのレギュラー',music_prime:'ゴールデン音楽番組',music_special:'大型音楽特番'};
+ const requirements={4:1,5:2,6:3};
+ const rankNames={4:'B → A',5:'A → S',6:'S → SS'};
+ const tip={
+  4:'実動員3,000人以上・動員率95%以上のライブや、CD10万枚などのA相当実績を1種類獲得。',
+  5:'ライブ1万人以上・95%以上、5都市すべて1,000人以上で95%以上のツアー、大バズ、CD50万枚、配信50万件、X50万人、ドラマ大ヒット、個人レギュラー1クール完了など。',
+  6:'ライブ3万人以上・95%以上、登録済みアリーナで5都市すべて95%以上のツアー、超大バズ、CD100万枚、配信100万件、X150万人、映画大ヒット、個人レギュラー2クール完了など。'
+ };
+ const escapeText=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function findAchievements(p,tier){
+  const since=p.needsFresh?p.demotedAt:null;
+  return (p.achievements||[]).filter(a=>Number(a.tier)>=tier && (!since||String(a.date||'')>String(since)) && !(a.category==='film'&&tier===5) && !(a.category==='drama'&&tier===6));
+ }
+ function oneRank(o,group,tier){
+  const p=irPopularityEnsure(o,group),rank=Number(p.rank)||0,eligible=rank>=tier+1,active=rank===tier,ach=findAchievements(p,tier),cats=new Set(ach.map(a=>a.category)),need=requirements[tier];
+  const live=ach.some(a=>a.category==='live'),individual=ach.some(a=>a.individual),xp=p.xp>=1000;
+  const line=(ok,msg)=>`<div style="margin:3px 0">${ok?'✅':'⬜'} ${escapeText(msg)}</div>`;
+  const met=Array.from(cats).map(c=>labels[c]||c).join('・');
+  const xpText=eligible?'達成済み':active?`${Math.min(1000,p.xp)} / 1,000（残り${Math.max(0,1000-p.xp)}）`:'このランクに到達後に経験値1,000が必要';
+  return `<section style="border:1px solid #ddd;border-radius:9px;padding:10px;margin:9px 0"><b>${escapeText(rankNames[tier])}</b> ${eligible?'✅ 昇格済み':active?'（現在の昇格目標）':'（今後の目標）'}
+  ${line(eligible||active&&xp,'経験値：'+xpText)}
+  ${line(eligible||cats.size>=need,`異なる実績：${cats.size} / ${need}種類${cats.size<need?'（残り'+(need-cats.size)+'種類）':''}`)}
+  ${tier>=5?line(eligible||live,'ライブ実績：対象ランク相当の実動員・動員率95%以上'):''}
+  ${tier>=5&&!group?line(eligible||individual,'個人実績：本人のフォロワー・出演作品の大ヒット・レギュラー出演など'):''}
+  ${met?`<div style="font-size:.9em;color:var(--muted,#666)">✅ 記録済みの実績：${escapeText(met)}</div>`:'<div style="font-size:.9em;color:var(--muted,#666)">記録済みの対象実績：なし</div>'}
+  <div style="font-size:.9em;margin-top:5px">対象となる例：${escapeText(tip[tier])}</div></section>`;
+ }
+ function guide(){
+  if(state.tab!=='ホーム')return;
+  const root=document.getElementById('content');if(!root)return;
+  const old=document.getElementById('irPopularityGuide251');if(old)old.remove();
+  const block=document.createElement('section');block.id='irPopularityGuide251';block.style.cssText='margin:20px 0 30px;padding:16px;border:1px solid #63738c;border-radius:12px;line-height:1.7';
+  let html='<h2>人気度の昇格ガイド</h2><p>✅は達成済み、⬜は未達成。グループとメンバーごとに、現在の実績と不足条件を表示します。</p>';
+  for(const g of state.groups||[]){
+   html+=`<div style="margin:18px 0 9px"><h3 style="margin-bottom:5px">グループ：${escapeText(g.name)}</h3>${[4,5,6].map(t=>oneRank(g,true,t)).join('')}</div>`;
+   for(const m of g.members||[]){if(m.idolRoadDismissed)continue;html+=`<details style="margin:8px 0;border:1px solid #ddd;border-radius:8px;padding:9px"><summary style="font-weight:bold;cursor:pointer">${escapeText(m.stageName||m.name)}｜個別人気度：${escapeText((typeof GRADE_ORDER!=='undefined'?GRADE_ORDER[irPopularityEnsure(m,false).rank]:'')||'')}</summary>${[4,5,6].map(t=>oneRank(m,false,t)).join('')}</details>`;}
+  }
+  html+='<h3>判定の注意点・対象外になるケース</h3><p>・ライブは予測ではなく実際の動員数で判定。動員率が95%未満なら対象外。<br>・ツアーは5都市以上かつ全公演終了後に判定。1公演でも会場条件や動員率を満たさなければ対象外。<br>・Sツアーは全会場1,000人以上、SSツアーは登録済みアリーナ対象会場。名称に「アリーナ」がなくても対象会場なら有効。<br>・同じ実績の種類を何度達成しても、必要な「異なる種類」は1つとして数える。<br>・個人人気度A→S・S→SSには、本人固有の実績も必要。単発バラエティはレギュラー実績にならない。<br>・ゴールデンバラエティの初レギュラーは1クール完了でS実績、継続2クール完了でSS実績。<br>・ドラマ大ヒットはS用、映画大ヒットはSS用。<br>・降格後の再昇格には降格後に獲得した実績が必要。</p>';
+  block.innerHTML=html;root.appendChild(block);
+ }
+ const oldRender=render;
+ render=function(){const result=oldRender.apply(this,arguments);try{cleanupMail();guide()}catch(err){console.error('v253 guide/mail',err)}return result;};
+ const oldDay=addDay;
+ addDay=function(){const result=oldDay.apply(this,arguments);try{cleanupMail()}catch(err){console.error('v253 mail cleanup',err)}return result;};
+ try{cleanupMail()}catch(e){console.error('v253 mail init',e)}
+ window.IR_RETENTION_GUIDE_V253={cleanupMail,guide,mailExpired};
 })();
 </script>
 </body></html>
