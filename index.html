@@ -2853,8 +2853,8 @@ function xDescription(a){if(a.id.startsWith('member:')){const g=accounts().find(
 function xProfileContent(){const list=accounts();if(!xAccount)return `<div class="sns-top">プロフィール</div>${list.filter(a=>a.id==='agency'||a.id.startsWith('group:')).map(a=>`<div class="sns-account" data-account="${esc(a.id)}"><div class="sns-avatar">${xAvatar(a)}</div><div><b>${esc(a.name)}</b><div class="sns-muted">${esc(a.handle)}</div><div class="sns-muted">${esc(a.kind)}</div></div></div>`).join('')}`;const a=list.find(x=>x.id===xAccount);if(!a){xAccount=null;return xProfileContent()}const following=window.__idolRoadXFollowing?.(a.id)??xFollows(a.id).length,followers=Math.max(0,Number(window.__idolRoadXFollowers?.(a.id))||0);const ps=(window.__idolRoadXGetPosts?.()||[]).filter(p=>p.account===a.id);return `<div class="sns-top"><button class="sns-profile-back" data-account-back>←</button> ${esc(a.name)} <div class="sns-muted">${ps.length} 件のポスト</div></div><div class="sns-banner"></div><div class="sns-profile-info"><div class="sns-avatar" style="margin-top:-45px;border:4px solid white;position:relative">${xAvatar(a)}</div><h2 style="margin-bottom:3px">${esc(a.name)}</h2><div class="sns-muted">${esc(a.handle)}</div><p>${a.id.startsWith('member:')?xLinkedBody(xDescription(a)):esc(xDescription(a))}</p><p><b>${following}</b> フォロー中　<b>${followers}</b> フォロワー</p></div><div class="sns-profile-tabs">${['ポスト','返信','メディア','いいね'].map(t=>`<button data-profile-tab="${t}">${t}</button>`).join('')}</div><div id="sns-profile-empty">${ps.map(p=>xPostMarkup(p,-1)).join('')||'<div style="padding:45px;text-align:center;color:#555">まだポストはありません</div>'}</div>`}
 function xHandleLink(handle){const raw=String(handle||'').replace(/^@/,'');const list=accounts();const a=list.find(a=>String(a.handle||'').replace(/^@/,'').toLowerCase()===raw.toLowerCase())||list.find(a=>a.id.startsWith('group:')&&(a.name===raw||kanaRoman(a.name)===raw||kanaRoman(a.reading||a.name)===raw))||list.find(a=>a.id==='agency'&&(a.name===raw||kanaRoman(a.name)===raw));return a?`<a href="#" data-account="${esc(a.id)}" class="sns-x-handle">${esc(handle)}</a>`:`<span class="sns-x-handle">${esc(handle)}</span>`}
 function xLinkedBody(body){const str=String(body??'');const names=accounts().filter(a=>a.id.startsWith('group:')).map(a=>a.name).filter(Boolean).sort((a,b)=>b.length-a.length).map(v=>v.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));const re=new RegExp('@(?:'+[...names,'[A-Za-z0-9_]+','[^\\s#@＃、。，．！!？?（）()「」『』]+'].join('|')+')|#[^\\s#@＃、。，．！!？?（）()「」『』]+','g');let out='',at=0,m;while((m=re.exec(str))){out+=esc(str.slice(at,m.index));out+=m[0][0]==='#'?`<a href="#" class="sns-x-handle" data-hashtag="${esc(m[0].slice(1))}">${esc(m[0])}</a>`:xHandleLink(m[0]);at=re.lastIndex}return out+esc(str.slice(at))}
-function xDisplayedCommentCount(p){if(!p)return 0;if(String(p.account||'').startsWith('group:')&&/メンバー発表！/.test(String(p.body||'')))return Math.max(5,Math.min(30,Math.round((Number(p.likes)||0)*.03)));if(!String(p.account||'').startsWith('member:'))return 0;return Math.max(0,Math.round((Number(p.likes)||0)*(p.memberAutoPhoto?.035:.02)))}
-function xPostMarkupUnsafe(p,index){const all=window.__idolRoadXGetPosts?.()||[],base=(p.repostOf?all.find(q=>q.id===p.repostOf):null)||p,owner=accounts().find(a=>a.id===base.account)||accounts().find(a=>a.handle===base.handle)||accounts().find(a=>a.name===base.user||a.name===base.name),reposts=all.filter(q=>q.repostOf===base.id||q.quoteOf===base.id).length;const staticIndex=index>=all.length?index-all.length:-1;const count=reposts+(Number(base.organicReposts)||0)+(staticIndex>=0?(repostCounts[staticIndex]||0):0)+(reposted.has(base.id||index)?1:0);return `<article class="sns-post${base.incidentKind==='leak'||base.incidentKind==='magazine'?' ir-incident-alert-post':''}" ${index>=0?`data-post="${index}"`:''}>${p.repostOf?`<div class="sns-muted">🔁 ${esc(p.name)}さんがリポスト</div>`:''}<span class="sns-generic-avatar${owner?.id==='agency'||owner?.id?.startsWith('group:')?' sns-official-post-avatar':''}" data-account="${esc(owner?.id||base.account||'')}" style="cursor:pointer">${xAvatar(owner)}</span><b data-account="${esc(base.account||'')}" style="cursor:pointer">${esc(base.user||base.name)}</b> <span class="sns-muted">${xHandleLink(base.handle||base.id)} · ${esc(base.date||'2時間前')}</span><p style="white-space:pre-wrap">${xLinkedBody(base.body)}</p>${base.photoId!=null&&window.__idolRoadXPhoto?.(base.photoId)?`<img src="${window.__idolRoadXPhoto(base.photoId)}" style="max-width:100%;max-height:330px;object-fit:contain;border-radius:12px">`:''}${base.quoteOf?(()=>{const q=all.find(t=>t.id===base.quoteOf);return q?`<div class="sns-quoted-post" style="border:1px solid #ccd6dd;border-radius:12px;padding:12px;margin:10px 0"><b data-account="${esc(q.account)}" style="cursor:pointer">${esc(q.name)}</b> ${xHandleLink(q.handle)}<p style="white-space:pre-wrap">${xLinkedBody(q.body)}</p>${q.photoId!=null&&window.__idolRoadXPhoto?.(q.photoId)?`<img src="${window.__idolRoadXPhoto(q.photoId)}" style="max-width:100%;max-height:220px;object-fit:contain;border-radius:10px">`:''}</div>`:''})():''}<div class="sns-actions"><button ${index>=0?`data-comment="${index}"`:''}>💬 ${xDisplayedCommentCount(base).toLocaleString('ja-JP')}</button><button ${index>=0?`data-repost="${index}"`:''}>🔄 ${count}</button><button ${index>=0?`data-like="x${index}"`:''}>♥ ${(base.likes||0)+(liked.has('x'+index)?1:0)}</button><button ${index>=0?`data-share="${index}"`:''}>↗ 共有</button></div></article>`}
+function xDisplayedCommentCount(p){if(!p)return 0;if(p.incidentId&&(p.incidentKind==='leak'||p.incidentKind==='magazine'||p.incidentKind==='official'))return Math.max(0,Number(p.comments)||0,Array.isArray(p.communityComments)?p.communityComments.length:0);if(String(p.account||'').startsWith('group:')&&/メンバー発表！/.test(String(p.body||'')))return Math.max(5,Math.min(30,Math.round((Number(p.likes)||0)*.03)));if(!String(p.account||'').startsWith('member:'))return 0;return Math.max(0,Math.round((Number(p.likes)||0)*(p.memberAutoPhoto?.035:.02)))}
+function xPostMarkupUnsafe(p,index){const all=window.__idolRoadXGetPosts?.()||[],base=(p.repostOf?all.find(q=>q.id===p.repostOf):null)||p,owner=accounts().find(a=>a.id===base.account)||accounts().find(a=>a.handle===base.handle)||accounts().find(a=>a.name===base.user||a.name===base.name),reposts=all.filter(q=>q.repostOf===base.id||q.quoteOf===base.id).length;const staticIndex=index>=all.length?index-all.length:-1;const count=reposts+(Number(base.organicReposts)||0)+(staticIndex>=0?(repostCounts[staticIndex]||0):0)+(reposted.has(base.id||index)?1:0);return `<article class="sns-post${base.incidentKind==='leak'||base.incidentKind==='magazine'?' ir-incident-alert-post':''}" ${index>=0?`data-post="${index}"`:''}>${p.repostOf?`<div class="sns-muted">🔁 ${esc(p.name)}さんがリポスト</div>`:''}<span class="sns-generic-avatar${owner?.id==='agency'||owner?.id?.startsWith('group:')?' sns-official-post-avatar':''}" data-account="${esc(owner?.id||base.account||'')}" style="cursor:pointer">${xAvatar(owner)}</span><b data-account="${esc(base.account||'')}" style="cursor:pointer">${esc(base.user||base.name)}</b> <span class="sns-muted">${xHandleLink(base.handle||base.id)} · ${esc(base.date||'2時間前')}</span><p style="white-space:pre-wrap">${xLinkedBody(base.body)}</p>${(base.incidentKind==='leak'||base.incidentKind==='magazine')?`<div class="ir-scandal-severity-tag">${esc(base.irScandalScaleLabel||'炎上・情報拡散中')}</div>`:''}${base.photoId!=null&&window.__idolRoadXPhoto?.(base.photoId)?`<img src="${window.__idolRoadXPhoto(base.photoId)}" style="max-width:100%;max-height:330px;object-fit:contain;border-radius:12px">`:''}${base.quoteOf?(()=>{const q=all.find(t=>t.id===base.quoteOf);return q?`<div class="sns-quoted-post" style="border:1px solid #ccd6dd;border-radius:12px;padding:12px;margin:10px 0"><b data-account="${esc(q.account)}" style="cursor:pointer">${esc(q.name)}</b> ${xHandleLink(q.handle)}<p style="white-space:pre-wrap">${xLinkedBody(q.body)}</p>${q.photoId!=null&&window.__idolRoadXPhoto?.(q.photoId)?`<img src="${window.__idolRoadXPhoto(q.photoId)}" style="max-width:100%;max-height:220px;object-fit:contain;border-radius:10px">`:''}</div>`:''})():''}<div class="sns-actions"><button ${index>=0?`data-comment="${index}"`:''}>💬 ${xDisplayedCommentCount(base).toLocaleString('ja-JP')}</button><button ${index>=0?`data-repost="${index}"`:''}>🔄 ${count}</button><button ${index>=0?`data-like="x${index}"`:''}>♥ ${(base.likes||0)+(liked.has('x'+index)?1:0)}</button><button ${index>=0?`data-share="${index}"`:''}>↗ 共有</button></div></article>`}
 
 
 function xPostMarkup(p,index){try{return xPostMarkupUnsafe(p,index)}catch(err){console.error('X post render failed',err,p?.id);return `<article class="sns-post"><b>${esc(p?.name||p?.user||'投稿')}</b><p style="white-space:pre-wrap">${esc(p?.body||'')}</p></article>`}}
@@ -2871,8 +2871,45 @@ function xCommunityMarkup(p){const escText=esc(p.body||''),all=window.__idolRoad
 function xCommentMarkup(p){const comments=window.__idolRoadXComments?.(p)||[];if(!String(p?.account||'').startsWith('member:')&&!(String(p?.account||'').startsWith('group:')&&xDisplayedCommentCount(p)>0))return '';return `<section style="padding:12px 18px;border-top:1px solid #ddd"><h3>コメント · ${xDisplayedCommentCount(p).toLocaleString('ja-JP')}</h3>${comments.map(c=>`<div style="padding:10px 0;border-bottom:1px solid #eee"><span class="sns-generic-avatar sns-fan-avatar" style="cursor:default"></span> <b>${esc(c.name)}</b> <span class="sns-muted">${esc(c.handle)}</span><p>${esc(c.body)}</p>${c.reply?`<div style="margin-left:22px;padding:8px;border-left:2px solid #888"><b>${esc(p.name)} 返信</b><p>${esc(c.reply)}</p></div>`:''}</div>`).join('')}</section>`}
 
 function irXSafeCommunityPosts(){try{const result=window.__idolRoadXCommunity?.();return Array.isArray(result)?result.filter(p=>p&&typeof p==='object'):[]}catch(err){console.error('IDOL ROAD X community skipped',err);return []}}
+// v245: while a scandal is active, pin its source post to the top of Recommended.
+// Do not mutate post history or affect Following, profiles, details, or hashtag searches.
+function irXActiveScandalSourceIdsV245(){
+ const ids=new Set();
+ const now=new Date(String(today())+'T12:00:00');
+ if(Number.isNaN(now.getTime()))return ids;
+ const active=(start,size)=>{
+  const d=new Date(String(start||'')+'T12:00:00');
+  if(Number.isNaN(d.getTime()))return false;
+  const age=Math.floor((now-d)/86400000);
+  return age>=0&&age<({小:2,中:4,大:7}[size]||4);
+ };
+ for(const incident of state.idolRoadIncidents||[]){
+  if(!active(incident.date,incident.severity))continue;
+  const src=(state.idolXPosts||[]).find(p=>String(p.incidentId||'')===String(incident.id)&&['magazine','leak'].includes(String(p.incidentKind||p.kind||'')));
+  if(src?.id)ids.add(String(src.id));
+  else for(const id of incident.posts||[]){const p=(state.idolXPosts||[]).find(q=>String(q.id)===String(id));if(p&&['magazine','leak'].includes(String(p.incidentKind||p.kind||'')))ids.add(String(p.id));}
+ }
+ for(const event of state.irSnsFire?.events||[]){
+  if(active(event.date,event.severity)&&event.postId)ids.add(String(event.postId));
+ }
+ return ids;
+}
+function irXScandalSourceRankV245(p,ids){
+ if(ids.has(String(p?.id||'')))return 3;
+ // All fan/general scandal discussion is prioritized while that scandal is active.
+ if(p?.irScandalWaveV159 && p.replyTo && ids.has(String(p.replyTo)))return 2;
+ if(p?.irScandalCriticalV246 && (p.replyTo||p.quoteOf) && (state.irSnsFire?.events||[]).concat(state.idolRoadIncidents||[]).some(e=>String(e.id)===String(p.irScandalIncidentIdV246)&&irXIncidentActiveV246(e)))return 2;
+ if(p?.incidentId && !['leak','magazine','official'].includes(String(p.incidentKind||'')) && (state.idolRoadIncidents||[]).some(e=>String(e.id)===String(p.incidentId)&&irXIncidentActiveV246(e)))return 2;
+ return 0;
+}
+function irXIncidentActiveV246(e){
+ if(!e?.date)return false;
+ const a=new Date(String(e.date)+'T12:00:00'),b=new Date(String(today())+'T12:00:00');
+ const age=Math.floor((b-a)/86400000);
+ return age>=0&&age<({小:2,中:4,大:7}[e.severity]||4);
+}
 let xActiveHashtag=null;function draw(){try{return drawInternal()}catch(err){console.error('IDOL ROAD X draw',err);root.innerHTML='<div style="padding:24px;color:#111"><h2>Xの表示を読み込めませんでした</h2><p>投稿の描画中に問題が発生しました。画面を閉じて再度開いてください。</p></div>';}}function drawInternal(){if(app==='X'){
-const gamePosts=window.__idolRoadXGetPosts?.()||[];const allPosts=[...gamePosts,...posts];const selectedPosts=xActiveHashtag?allPosts.map((p,i)=>({p,i})).filter(({p})=>{const base=p.repostOf?(gamePosts.find(q=>q.id===p.repostOf)||p):p;return String(base.body||'').split(/\s+/).some(w=>w==='#'+xActiveHashtag)}):detail>=0?[{p:allPosts[detail],i:detail}]:allPosts.map((p,i)=>({p,i}));const officialPosts=selectedPosts.filter(({p})=>{const id=String(p.account||'');return id==='agency'||id.startsWith('group:')||id.startsWith('member:')});const postHtml=(detail>=0||xActiveHashtag?selectedPosts.map(({p,i})=>xPostMarkup(p,i)).join(''):xFeedMode==='following'?officialPosts.filter(({p})=>idolXVisibleFanQuote(p)).slice(0,150).map(({p,i})=>xPostMarkup(p,i)).join(''):([...selectedPosts.filter(({p})=>{const id=String(p.account||'');return id!=='agency'&&!id.startsWith('group:')&&!id.startsWith('member:')&&idolXVisibleFanQuote(p)}).map(({p,i})=>({p,i,community:false})),...irXSafeCommunityPosts().filter(idolXVisibleFanQuote).map(p=>({p,community:true}))].sort((a,b)=>String(b.p.date||'').localeCompare(String(a.p.date||''))||String(b.p.id||'').localeCompare(String(a.p.id||''))).slice(0,150).map(x=>x.community?xCommunityMarkup(x.p):xPostMarkup(x.p,x.i)).join('')))||'<p style="padding:24px">該当する投稿はありません</p>';
+const gamePosts=window.__idolRoadXGetPosts?.()||[];const allPosts=[...gamePosts,...posts];const selectedPosts=xActiveHashtag?allPosts.map((p,i)=>({p,i})).filter(({p})=>{const base=p.repostOf?(gamePosts.find(q=>q.id===p.repostOf)||p):p;return String(base.body||'').split(/\s+/).some(w=>w==='#'+xActiveHashtag)}):detail>=0?[{p:allPosts[detail],i:detail}]:allPosts.map((p,i)=>({p,i}));const officialPosts=selectedPosts.filter(({p})=>{const id=String(p.account||'');return id==='agency'||id.startsWith('group:')||id.startsWith('member:')});const postHtml=(detail>=0||xActiveHashtag?selectedPosts.map(({p,i})=>xPostMarkup(p,i)).join(''):xFeedMode==='following'?officialPosts.filter(({p})=>idolXVisibleFanQuote(p)).slice(0,150).map(({p,i})=>xPostMarkup(p,i)).join(''):([...selectedPosts.filter(({p})=>{const id=String(p.account||'');return id!=='agency'&&!id.startsWith('group:')&&!id.startsWith('member:')&&(idolXVisibleFanQuote(p)||irXScandalSourceRankV245(p,irXActiveScandalSourceIdsV245()))}).map(({p,i})=>({p,i,community:false})),...irXSafeCommunityPosts().filter(idolXVisibleFanQuote).map(p=>({p,community:true}))].sort((a,b)=>{const pinned=irXActiveScandalSourceIdsV245();return irXScandalSourceRankV245(b.p,pinned)-irXScandalSourceRankV245(a.p,pinned)||String(b.p.date||'').localeCompare(String(a.p.date||''))||String(b.p.id||'').localeCompare(String(a.p.id||''));}).slice(0,150).map(x=>x.community?xCommunityMarkup(x.p):xPostMarkup(x.p,x.i)).join('')))||'<p style="padding:24px">該当する投稿はありません</p>';
 const main=page==='プロフィール'?xProfileContent():`<div class="sns-top">${xActiveHashtag?`<button data-hashtag-back>← 戻る</button> #${esc(xActiveHashtag)}`:esc(page)}</div>${page==='ホーム'&&detail<0&&!xActiveHashtag?`<div style="display:flex;border-bottom:1px solid #ddd"><button data-x-feed="recommended" style="flex:1;padding:13px;background:transparent;border:0;color:#111;font-weight:${xFeedMode==='recommended'?'bold':'normal'}">おすすめ</button><button data-x-feed="following" style="flex:1;padding:13px;background:transparent;border:0;color:#111;font-weight:${xFeedMode==='following'?'bold':'normal'}">フォロー中</button></div>`:''}${detail>=0&&!xActiveHashtag?'<div class="sns-detail"><button data-back>← 戻る</button><h3>投稿の詳細</h3></div>':''}${postHtml}${detail>=0?xCommentMarkup(allPosts[detail]):''}`;
 root.innerHTML=`<div class="sns-shell"><nav class="sns-side"><h1>𝕏</h1>${['ホーム','プロフィール'].map(x=>`<button data-page="${x}">${x}</button>`).join('')}</nav><main class="sns-feed">${main}</main><aside class="sns-trends"><h3>話題のトピック</h3><p>#アイドルライブ</p><p>#新曲公開</p><p>#推し活</p></aside></div>`}
 
@@ -2942,7 +2979,7 @@ const status=e=>e.status==='cancelled'?'中止':e.status==='finished'?'開催済
 const eventName=e=>`${e.type}｜${e.groupName}｜${e.date}`;
 function cancellation(e,reason,demotivate){if(e.status==='cancelled'||e.status==='finished')return;e.status='cancelled';e.cancelReason=reason;e.cancelDate=day();if(e.lotteryDone&&!e.refunded){const refund=members(e).reduce((sum,p)=>sum+(p.winners||0)*e.price,0);state.agencyFunds=funds()-refund;window.IDOL_ACCOUNTING?.recordBatch(members(e).filter(p=>(p.winners||0)*e.price>0).map(p=>({amount:-(p.winners||0)*e.price,groupId:e.groupId,memberId:p.id,category:'handshake',description:`${e.type} 中止返金`})));e.refunded=true;e.refundTotal=refund;}if(demotivate){for(const p of members(e)){const m=findMember(e,p);if(m)m.motivationLevel=Math.max(0,(Number(m.motivationLevel)||0)-(1+Math.floor(Math.random()*3)));}}notice(`${eventName(e)}：${reason}で中止しました。${e.refundTotal?'チケット代 '+money(e.refundTotal)+' を全額返金しました。':''}`)}
 function lottery(e){if(e.lotteryDone||e.status!=='booked')return;e.lotteryDone=true;let revenue=0,applications=0,winners=0;for(const p of members(e)){p.winners=Math.min(p.cap||0,p.apps||0);p.revenue=p.winners*e.price;revenue+=p.revenue;applications+=p.apps||0;winners+=p.winners;}e.revenue=revenue;state.agencyFunds=funds()+revenue;window.IDOL_ACCOUNTING?.recordBatch(members(e).filter(p=>p.revenue>0).map(p=>({amount:p.revenue,groupId:e.groupId,memberId:p.id,category:'handshake',description:`${e.type} チケット売上`})));notice(`${eventName(e)} の抽選完了｜総申込 ${applications.toLocaleString()}枚・総当選 ${winners.toLocaleString()}枚・総売上 ${money(revenue)}`)}
-function finish(e){if(e.status!=='booked')return;const g=group(e.groupId);if(!g){cancellation(e,'グループ解散',false);return}const roster=new Set((e.dayParticipantIds||[]).map(String));const active=members(e).filter(p=>{const m=findMember(e,p);return m&&roster.has(String(m.id))});if(e.salesStarted&&!active.length){cancellation(e,'参加メンバー全員脱退',false);return}if(!e.salesStarted){cancellation(e,'チケット未販売',true);return}const travel=venue(e.venueId).fare*active.length;e.travelCost=travel;if(!e.travelPaid){if(funds()<travel){cancellation(e,'資金不足',true);return}state.agencyFunds=funds()-travel;window.IDOL_ACCOUNTING?.record(-travel,e.groupId,null,'event_cost','握手会・写真会 移動費');}e.status='finished';e.finishedDate=day();for(const p of active){if((p.winners||0)<1)continue;const m=findMember(e,p),n=1+Math.floor(Math.random()*3);m.fanServiceRating=Math.min(100,Number.isFinite(m.fanServiceRating)?m.fanServiceRating+n:Math.round((typeof popularitySkillPoints==='function'?popularitySkillPoints(m,'ファン対応'):4000)/80)+n);if(typeof addSkillExperience==='function')addSkillExperience(m,'ファン対応',n*80);p.fanGain=n;}notice(`${eventName(e)} を開催しました。移動費 ${money(travel)} を支払いました。`)}
+function finish(e){if(e.status!=='booked')return;const g=group(e.groupId);if(!g){cancellation(e,'グループ解散',false);return}const roster=new Set((e.dayParticipantIds||[]).map(String));const active=members(e).filter(p=>{const m=findMember(e,p);return m&&roster.has(String(m.id))});if(e.salesStarted&&!active.length){cancellation(e,'参加メンバー全員脱退',false);return}if(!e.salesStarted){cancellation(e,'チケット未販売',true);return}const travel=venue(e.venueId).fare*active.length;e.travelCost=travel;if(!e.travelPaid){if(funds()<travel){cancellation(e,'資金不足',true);return}state.agencyFunds=funds()-travel;window.IDOL_ACCOUNTING?.record(-travel,e.groupId,null,'event_cost','握手会・写真会 移動費');}e.status='finished';e.finishedDate=day();try{window.IR_SCANDAL_EVENT_MENTAL_V246?.(e,active,findMember)}catch(err){console.warn('v246 handshake mental',err)}for(const p of active){if((p.winners||0)<1)continue;const m=findMember(e,p),n=1+Math.floor(Math.random()*3);m.fanServiceRating=Math.min(100,Number.isFinite(m.fanServiceRating)?m.fanServiceRating+n:Math.round((typeof popularitySkillPoints==='function'?popularitySkillPoints(m,'ファン対応'):4000)/80)+n);if(typeof addSkillExperience==='function')addSkillExperience(m,'ファン対応',n*80);p.fanGain=n;}notice(`${eventName(e)} を開催しました。移動費 ${money(travel)} を支払いました。`)}
 window.IR_AUTO_HANDSHAKE=e=>{if(e.status!=='booked')return false;if(!e.lotteryDone)lottery(e);finish(e);return e.status==='finished'};
 function removeDeparted(){for(const e of evs().filter(e=>e.status==='booked'&&e.salesStarted)){const g=group(e.groupId);if(!g){cancellation(e,'グループ解散',false);continue}for(const p of members(e)){if(p.left||findMember(e,p))continue;p.left=true;p.cancelledApps=p.apps||0;p.apps=0;p.todayApps=0;if(e.lotteryDone&&p.winners){const refund=p.winners*e.price;state.agencyFunds=funds()-refund;window.IDOL_ACCOUNTING?.record(-refund,e.groupId,p.id,'handshake',`${e.type} 脱退返金`);p.refunded=(p.refunded||0)+refund;p.winners=0;p.revenue=0;e.revenue=Math.max(0,(e.revenue||0)-refund);notice(`${eventName(e)}：${p.name}の脱退により ${money(refund)} を返金しました。`)}}if(!members(e).some(p=>!p.left&&findMember(e,p)))cancellation(e,'参加メンバー全員脱退',false)}}
 function tick(){const now=day();for(const q of inquiries()){if(q.status!=='pending'||days(q.requested,now)<q.replyDays)continue;q.status='answered';const occupied=evs().some(e=>e.status==='booked'&&e.venueId===q.venueId&&e.date===q.date);q.available=!occupied&&Math.random()<(q.probability);mail('inbox',`Re:【会場問い合わせ】${venue(q.venueId).name}`,`${q.groupName}\nイベント運営ご担当者様\n\n平素よりお世話になっております。\n${venue(q.venueId).name} 会場予約担当でございます。\n\nこのたびは会場利用についてお問い合わせいただき、誠にありがとうございます。\n\n【お問い合わせ内容】\n・催事：${q.groupName} ${q.type}\n・開催希望日：${q.date}\n・ご利用時間：10:00〜18:00\n・会場：${venue(q.venueId).name}\n\n${q.available?'ご希望いただきました日程について確認いたしましたところ、現在ご案内が可能でございます。\n会場使用料：'+money(venue(q.venueId).fee)+'\n\n正式予約をご希望の場合は、このメール下部の「正式予約」をお選びください。\nご利用を見送られる場合は「見送る」をお選びください。\nなお、正式予約の確定時に会場使用料を申し受けます。予約後のキャンセル・返金はできません。':'誠に恐縮ですが、ご希望の日程では会場をご案内できかねます。\nまたの機会にご検討いただけますと幸いです。'}\n\nご検討のほど、何卒よろしくお願い申し上げます。\n\n${venue(q.venueId).name}\n予約担当`,'会場予約窓口',q.id)}removeDeparted();for(const e of evs().filter(e=>e.status==='booked')){const diff=days(now,e.date);if(!e.salesStarted&&diff<=13){cancellation(e,'チケット未販売',true);continue}if(e.salesStarted&&!e.lotteryDone&&diff<=7){lottery(e);continue}if(e.salesStarted&&!e.lotteryDone&&diff>7){for(const p of members(e)){if(p.left)continue;const m=findMember(e,p);if(!m)continue;const count=Math.max(0,Math.round(p.prediction/Math.max(1,days(e.saleDate,e.date)-7)*(memberScore(m)/Math.max(1,p.initialScore))*(.7+Math.random()*.6)));p.todayApps=count;p.apps+=count}}if(diff<0)finish(e)}save()}
@@ -3270,7 +3307,7 @@ const priorLive=renderLiveHost;renderLiveHost=function(){priorLive();const list=
    const handle='@'+ids[i]+words[(h>>>9)%words.length]+(h%7===0?String((h>>>5)%90+10):'');
    const author={id:'xhuman_'+seq.toString(36),name:names[i],handle,kind};st.profiles[author.id]=author;return author;
  }
- function protectedPost(p){const a=String(p?.account||'');const n=String(p?.name||'');const handle=String(p?.handle||'');return !p||a==='agency'||a.startsWith('group:')||a.startsWith('member:')||a.startsWith('magazine:')||a.startsWith('leak:')||/^(?:文春|FRIDAY|FLASH|週刊|暴露系)/i.test(n)||/^@(?:bunshun|friday|flash|leak|agency)/i.test(handle)}
+ function protectedPost(p){const a=String(p?.account||'');const n=String(p?.name||'');const handle=String(p?.handle||'');return !p||a==='agency'||a.startsWith('group:')||a.startsWith('member:')||a.startsWith('magazine:')||a==='leak'||a.startsWith('leak:')||/^(?:文春|FRIDAY|FLASH|週刊|暴露系)/i.test(n)||/^@(?:bunshun|friday|flash|leak|agency)/i.test(handle)}
  function assign(p,asComment=false){
   if(!p||(!asComment&&protectedPost(p)))return false;
   const st=db(); const oldKey=String(p.account||p.authorId||p.id||p.handle||'anon');
@@ -5248,16 +5285,16 @@ function members(){return (state.groups||[]).flatMap(g=>(g.members||[]).map(m=>(
 function xPost(account,name,handle,body,extra={}){
  if(idolXDismissedAccount(account)||idolXMemberPostingBlocked(account))return null;
  const p={id:'xincident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),account,name,handle,body,date:date(),likes:0,reposts:0,organicReposts:0,incidentId:extra.incidentId||null,incidentType:extra.incidentType||null,incidentKind:extra.kind||null};
- const group=groupOf(extra.groupId),reach=irXScandalReactionScale(group);const cap=Math.round(reach*(extra.kind==='magazine'?9:extra.kind==='leak'?7:4));p.likes=rnd(0,Math.max(1,cap));p.organicReposts=Math.round(p.likes*(extra.kind==='magazine'?.08:.035));
+ const group=groupOf(extra.groupId),reach=irXScandalReactionScale(group);const metric=window.IR_SCANDAL_243?.metrics?.(group,extra.incidentId,extra.kind);if(metric){p.likes=metric.likes;p.organicReposts=metric.reposts;p.reposts=metric.reposts;p.comments=metric.comments;}else{const cap=Math.round(reach*(extra.kind==='magazine'?9:extra.kind==='leak'?7:4));p.likes=rnd(0,Math.max(1,cap));p.organicReposts=Math.round(p.likes*(extra.kind==='magazine'?.08:.035));}
  accountPosts().unshift(p);return p;
 }
 function memberName(m){return m?.stageName||m?.name||'メンバー';}
 function groupName(g){return g?.name||'所属グループ';}
-function rumorText(type,m,g){const n=memberName(m),gn=groupName(g),age=ageOf(m);switch(type){case'熱愛':return [`【速報】${gn}・${n}に熱愛疑惑が浮上。関係者の目撃情報が話題に。事実関係は現時点で確認中。`,`【緊急】人気アイドル${n}に交際疑惑か。プライベートをめぐる情報が浮上、今後の動向に注目。`,`【衝撃】${gn} ${n}に熱愛疑惑。SNS上でさまざまな憶測が広がっています。`][rnd(0,2)];case'ファンとの私的交流':return [`【速報】${gn}・${n}にファンとの私的交流疑惑。特定ファンとの接触情報が浮上。`,`【緊急暴露】${n}に「繋がり」疑惑か。イベント外での交流をめぐる情報が寄せられています。`,`【衝撃】${gn} ${n}にファンとの個人的なやり取り疑惑。事実関係は確認中。`][rnd(0,2)];case'未成年飲酒':return [`【緊急暴露】${gn}・${n}（${age??'20歳未満'}）に未成年飲酒疑惑。飲食店での目撃情報が浮上。事実関係は確認中。`,`【速報】${n}に未成年飲酒疑惑か。情報の真偽を含め、今後の動向に注目。`][rnd(0,1)];case'未成年喫煙':return [`【衝撃】${gn}・${n}（${age??'20歳未満'}）に未成年喫煙疑惑が浮上。現時点では確認中の情報です。`,`【速報】${n}に喫煙疑惑か。情報の真偽や事務所の対応に注目が集まっています。`][rnd(0,1)];default:return [`【速報】${gn}・${n}をめぐり新たな情報が浮上。現在、事実関係を確認中です。`][0];}}
-function magText(mag,inc){const n=memberName(IM(inc)),g=groupName(IG(inc));const t=inc.type;const title=t==='熱愛'?'熱愛疑惑':t==='ファンとの私的交流'?'ファンとの私的交流疑惑':t==='未成年飲酒'?'未成年飲酒疑惑':t==='未成年喫煙'?'未成年喫煙疑惑':'新たな疑惑';const variants={
+function rumorText(type,m,g){const n=memberName(m),gn=groupName(g),age=ageOf(m),partner=(state.idolRoadIncidents||[]).find(x=>String(x.memberId)===String(m.id)&&x.type==='熱愛'&&x.date===date())?.romancePartner;const ptext=partner?(partner.job==='一般人'?'一般人との交際疑惑':partner.name+'（'+partner.job+'）との交際疑惑'):'交際疑惑';switch(type){case'熱愛':return [`【速報】${gn}・${n}に${ptext}！？ 目撃情報が出てるけどどうなのこれ。`,`【暴露】${gn}の${n}、${ptext}ってマジ？ 情報が広がってる。`,`【衝撃】${n}の${ptext}が話題に。本人はどう説明するんだろうね。`][rnd(0,2)];case'ファンとの私的交流':return [`【速報】${gn}・${n}にファンとの私的交流疑惑。特定ファンとの接触情報が浮上。`,`【緊急暴露】${n}に「繋がり」疑惑か。イベント外での交流をめぐる情報が寄せられています。`,`【衝撃】${gn} ${n}にファンとの個人的なやり取り疑惑。事実関係は確認中。`][rnd(0,2)];case'未成年飲酒':return [`【緊急暴露】${gn}・${n}（${age??'20歳未満'}）に未成年飲酒疑惑。飲食店での目撃情報が浮上。事実関係は確認中。`,`【速報】${n}に未成年飲酒疑惑か。情報の真偽を含め、今後の動向に注目。`][rnd(0,1)];case'未成年喫煙':return [`【衝撃】${gn}・${n}（${age??'20歳未満'}）に未成年喫煙疑惑が浮上。現時点では確認中の情報です。`,`【速報】${n}に喫煙疑惑か。情報の真偽や事務所の対応に注目が集まっています。`][rnd(0,1)];default:return [`【速報】${gn}・${n}をめぐり新たな情報が浮上。現在、事実関係を確認中です。`][0];}}
+function magText(mag,inc){const n=memberName(IM(inc)),g=groupName(IG(inc));const t=inc.type;const partner=inc.romancePartner;const title=t==='熱愛'?(partner?partner.name+'（'+partner.job+'）との熱愛疑惑':'熱愛疑惑'):t==='ファンとの私的交流'?'ファンとの私的交流疑惑':t==='未成年飲酒'?'未成年飲酒疑惑':t==='未成年喫煙'?'未成年喫煙疑惑':'新たな疑惑';const variants={
  'magazine:bunshun':`《独自》${g}・${n}に${title}　関係者から寄せられた情報をもとに事実関係を確認中`,
  'magazine:friday':`${g}の${n}に${title}　プライベートでの目撃情報が浮上`,
- 'magazine:flash':`《芸能》${g}・${n}をめぐる${title}　所属事務所の対応にも注目が集まる`};return variants[mag.id]+'\n'+(t==='熱愛'?'交際をめぐる情報が浮上しているが、現時点で事実関係は確認されていない。':t==='ファンとの私的交流'?'イベント外での交流に関する情報が寄せられている。詳細は確認中。':'未成年メンバーの私生活をめぐる情報が浮上。事実関係は確認中。');}
+ 'magazine:flash':`《芸能》${g}・${n}をめぐる${title}　所属事務所の対応にも注目が集まる`,'magazine:seven':`《芸能》${g}の${n}、${title}を報道　関係者への取材を継続`};return variants[mag.id]+'\n'+(t==='熱愛'?'交際をめぐる情報が浮上しているが、現時点で事実関係は確認されていない。':t==='ファンとの私的交流'?'イベント外での交流に関する情報が寄せられている。詳細は確認中。':'未成年メンバーの私生活をめぐる情報が浮上。事実関係は確認中。');}
 // Confirmed incident impact: per-incident ledger prevents repeated deductions and restores false allegations.
 const severityRanges={小:[50,100],中:[150,300],大:[400,700]};
 const incidentMultiplier={熱愛:1,'ファンとの私的交流':1.3,'未成年飲酒':1.5,'未成年喫煙':1.5};
@@ -5438,7 +5475,7 @@ function respond(inc,decision){
  if(decision!=='処分を見送る'){officialPost(inc,decision);if(decision!=='契約解除'&&decision!=='活動休止')maybeMemberPost(inc,decision,decision);}if(decision==='契約解除')state.idolXPosts=accountPosts().filter(p=>String(p.account)!=='member:'+String(inc.memberId));accountReactions(inc,decision);if(decision!=='処分を見送る')addReplies(inc,decision);save();
 }
 function datePlusMonths(n){const d=new Date(state.year,state.month-1,1);const originalDay=Number(state.day);d.setMonth(d.getMonth()+n);const lastDay=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(originalDay,lastDay));return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismissed&&!m.idolRoadResumePending&&m.activityStatus!=='活動休止'&&!m.idolRoadPauseUntil);if(!all.length)return;const eligible=all.filter(({m})=>{const a=ageOf(m);return a!==null&&a<20});let pool=['熱愛','ファンとの私的交流','ファンとの私的交流','熱愛'];if(eligible.length)pool.push('未成年飲酒','未成年喫煙');const type=pool[rnd(0,pool.length-1)];const baseCandidates=(type==='未成年飲酒'||type==='未成年喫煙')?eligible:all;const candidates=baseCandidates.filter(({m})=>!incidentList().some(inc=>String(inc.memberId)===String(m.id)&&String(inc.date).slice(0,4)===String(state.year)));if(!candidates.length)return;const chosen=candidates[rnd(0,candidates.length-1)],g=chosen.g,m=chosen.m;const truth=Math.random()<.62;const inc={id:'incident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),date:date(),groupId:g.id,memberId:m.id,type,truth:truth?'unconfirmed_true':'unconfirmed_false',status:'未確認',posts:[],publishedMagazineIds:[]};incidentList().unshift(inc);ensureIncidentNotification(inc,false);const useMagazine=Number(m.popularity||m.fame||0)>=70;
+function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismissed&&!m.idolRoadResumePending&&m.activityStatus!=='活動休止'&&!m.idolRoadPauseUntil);if(!all.length)return;const eligible=all.filter(({m})=>{const a=ageOf(m);return a!==null&&a<20});let pool=['熱愛','ファンとの私的交流','ファンとの私的交流','熱愛'];if(eligible.length)pool.push('未成年飲酒','未成年喫煙');const type=pool[rnd(0,pool.length-1)];const baseCandidates=(type==='未成年飲酒'||type==='未成年喫煙')?eligible:all;const candidates=baseCandidates.filter(({m})=>!incidentList().some(inc=>String(inc.memberId)===String(m.id)&&String(inc.date).slice(0,4)===String(state.year)));if(!candidates.length)return;const chosen=candidates[rnd(0,candidates.length-1)],g=chosen.g,m=chosen.m;const truth=Math.random()<.62;const inc={id:'incident_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),date:date(),groupId:g.id,memberId:m.id,type,truth:truth?'unconfirmed_true':'unconfirmed_false',status:'未確認',posts:[],publishedMagazineIds:[],severity:(fame>65000&&gp>6500?'大':fame>25000&&gp>3800?'中':'小')};incidentList().unshift(inc);ensureIncidentNotification(inc,false);const gp=typeof groupPopularityPoints==='function'?Number(groupPopularityPoints(g).total||0):0;const fame=Number(g.fame||g.recognition||0);const mp=typeof popularityPoints==='function'?Number(popularityPoints(m)||0):Number(m.popularity||0);const useMagazine=gp>=5200&&fame>=40000&&mp>=3500; if(type==='熱愛')inc.romancePartner=window.IR_SCANDAL_243?.partner?.(useMagazine,inc.id)||null;
  if(useMagazine){const mag=MAG[rnd(0,MAG.length-1)];inc.posts.push(xPost(mag.id,mag.name,mag.handle,magText(mag,inc),{incidentId:inc.id,incidentType:type,kind:'magazine',groupId:g.id}).id);inc.publishedMagazineIds.push(mag.id);}
  else inc.posts.push(xPost(LEAK.id,LEAK.name,LEAK.handle,rumorText(type,m,g),{incidentId:inc.id,incidentType:type,kind:'leak',groupId:g.id}).id);
  // 事件と同時にファン・一般ユーザーの反応を生成。暴露元投稿への返信にまとめる。
@@ -5446,7 +5483,7 @@ function triggerIncident(){const all=members().filter(({m})=>!m.idolRoadDismisse
   `${memberName(m)}の件、まだ事実確認中なのに決めつけるのは違うと思う。`,
   `え、${groupName(g)}の${memberName(m)}って本当なの？公式からの説明を待ちたい。`,
   `推してるからこそ今はつらい…。憶測だけで広めないでほしい。`,
-  `週刊誌の投稿見たけど、本人の話を聞くまでは何とも言えない。`,
+  `暴露の投稿を見たけど、本人の話を聞くまでは何とも言えない。`,
   `${groupName(g)}の他のメンバーにまで迷惑がかからないといいな。`,
   `この話題でタイムラインがいっぱい。続報よりまず事実確認してほしい。`,
   `ファンとしては不安。事務所がきちんと対応してくれると信じたい。`,
@@ -7252,4 +7289,186 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  if(migrate()&&typeof save==='function')save();
 })();
 </script>
+<script id="ir-scandal-source-realism-v243">
+(function(){'use strict';
+ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+ const fnv=x=>{let h=2166136261;for(const c of String(x||''))h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0};
+ const fakeNames=['一ノ瀬悠真','篠原結翔','藤宮蓮','朝倉美月','月城大和','雨宮湊','白瀬陽向','黒川葵','瀬戸遥','天城颯太','神谷凛','橘翔','久遠理人','森永紗良'];
+ function partner(magazine,seed){const h=fnv(seed),name=fakeNames[h%fakeNames.length];if(magazine)return {name,job:['俳優','アイドル','スポーツ選手'][h%3]};if(h%2===0)return {name:'',job:'一般人'};return {name,job:'インフルエンサー'};}
+ function signal(g,inc){
+  const fame=clamp(Number(g?.fame||g?.recognition||0)/100000,0,1);
+  let pop=0;try{pop=clamp(Number(groupPopularityPoints(g).total)/8000,0,1)}catch(e){}
+  const sev=String(inc?.severity||inc?.size||'中');
+  const level=sev==='大'?3:sev==='小'?1:2;
+  return {fame,pop,level,score:.48*fame+.52*pop};
+ }
+ function metrics(g,incidentId,kind){
+  if(!incidentId)return null;
+  const inc=(state.idolRoadIncidents||[]).find(x=>String(x.id)===String(incidentId))||(state.irSnsFire?.events||[]).find(x=>String(x.id)===String(incidentId));
+  const s=signal(g,inc),h=fnv(String(incidentId)+':'+kind);
+  const severity=[0,.65,1.35,2.4][s.level],reach=Math.pow(.12+s.score,1.6),jitter=.76+(h%51)/100;
+  const source=(kind==='magazine'||kind==='leak'),official=kind==='official';
+  const multiplier=source?(kind==='magazine'?1.35:1):official?1.12:.28;
+  const likes=Math.max(1,Math.round((60+19000*reach)*severity*jitter*multiplier));
+  const reposts=Math.round(likes*(official?.16:source?.23:.07));
+  const comments=Math.max(1,Math.round(likes*(official?.075:source?.055:.025)));
+  return {likes,reposts,comments};
+ }
+ // Restore exposed scandal sources in old saves without altering unrelated fan/community accounts.
+ function restore(){let changed=false;const posts=state.idolXPosts||[];
+  for(const p of posts){if(!p?.incidentId)continue;const kind=p.incidentKind;
+   if(kind==='leak'){if(p.account!=='leak'||p.name!=='芸能人裏情報'||p.handle!=='@bakuro'){p.account='leak';p.name='芸能人裏情報';p.handle='@bakuro';changed=true;}}
+   if(kind==='magazine'){
+    const inc=(state.idolRoadIncidents||[]).find(x=>String(x.id)===String(p.incidentId));
+    const source=(inc?.publishedMagazineIds||[])[0]||'magazine:bunshun';
+    const names={'magazine:bunshun':['週刊文春','@bunshun'],'magazine:friday':['FRIDAY','@Friday'],'magazine:seven':['女性セブン','@joseiseven'],'magazine:flash':['FLASH','@FLASH']};
+    const [name,handle]=names[source]||names['magazine:bunshun'];if(p.account!==source||p.name!==name||p.handle!==handle){p.account=source;p.name=name;p.handle=handle;changed=true;}
+   }
+   if(kind==='leak'||kind==='magazine'||kind==='official'){
+    if(!p.irScandalScaledV243){const g=(state.groups||[]).find(g=>String(g.id)===String((state.idolRoadIncidents||[]).find(i=>String(i.id)===String(p.incidentId))?.groupId));const m=metrics(g,p.incidentId,kind);if(m){p.likes=m.likes;p.reposts=m.reposts;p.organicReposts=m.reposts;p.comments=m.comments;p.irScandalScaledV243=true;changed=true;}}
+   }
+  }
+  return changed;
+ }
+ // Content-appropriate reply pools for official statements. The numeric comment counter represents wider
+ // public response; sample comments are saved as real reply objects (not 10000 DOM nodes).
+ const statementLines={
+  '活動休止':['寂しいけど、今はゆっくり休んでほしい。','公式の説明を読んだ。残りのメンバーも心配。','今はそっと見守りたい。','こういう発表を見るのはつらい。'],
+  '契約解除':['突然でまだ整理できてない。','公式の判断を受け止めるしかないのかな。','他のメンバーの活動はどうなるんだろう。','ファンとして複雑な気持ち。'],
+  '公式否定':['公式の説明が出たんだね。','憶測で拡散した人も訂正してほしい。','本人への誹謗中傷が収まりますように。','まず発表をちゃんと読もう。'],
+  '処分を見送る':['活動継続なんだね。これからどうなるか見守りたい。','今回の対応については意見分かれそう。','発表確認した。今後の活動に注目してる。'],
+  '活動再開':['おかえりなさい！','またステージで見られるのうれしい。','無理せず少しずつ戻ってきてね。']
+ };
+ function statements(){let changed=false;for(const p of state.idolXPosts||[]){if(p.incidentKind!=='official'||!p.incidentId)continue;
+  if(p.irScandalStatementRepliesV243)continue;
+  const inc=(state.idolRoadIncidents||[]).find(x=>String(x.id)===String(p.incidentId));if(!inc)continue;
+  const lines=statementLines[inc.decision]||['公式の声明を確認した。','発表の内容をもう少し詳しく知りたい。','憶測だけでは判断できない。','これからの対応を見守りたい。'];
+  const g=(state.groups||[]).find(x=>String(x.id)===String(inc.groupId));const metric=metrics(g,inc.id,'official');if(!metric)continue;
+  p.communityComments??=[];
+  const old=p.communityComments.length;const target=clamp(Math.round(5+signal(g,inc).score*22+(signal(g,inc).level-1)*9),5,44);
+  for(let i=old;i<target;i++){
+   const key=p.id+':statement:'+i,h=fnv(key),names=['みお','ゆず','かほ','はる','りな','しおり','あおい','れい','なつ','まい','りく','さな'];
+   const comment={id:'sc243_'+h.toString(36),user:names[h%names.length],handle:'@'+['mio','yuzu','kaho','haru','rina','shiori','aoi','rei','natsu','mai','riku','sana'][h%names.length]+'_'+String((h>>>5)%90+10),body:lines[(h>>>4)%lines.length],likes:Math.round((h%41)*(.5+signal(g,inc).score*3)),kind:'fan',reply:null};
+   p.communityComments.push(comment);
+  }
+  p.likes=metric.likes;p.reposts=metric.reposts;p.organicReposts=metric.reposts;p.comments=Math.max(metric.comments,p.communityComments.length);
+  p.irScandalStatementRepliesV243=true;changed=true;
+ }
+ return changed;}
+ window.IR_SCANDAL_243={partner,metrics,restore,statements};
+ const migrate=()=>{try{if(restore()|statements())if(typeof save==='function')save();}catch(e){console.warn('v243 scandal restore',e)}};
+ const prior=window.render;
+ if(typeof prior==='function')window.render=function(){const r=prior.apply(this,arguments);migrate();return r};
+ migrate();
+})();
+</script>
+
+<style>
+#idol-sns-overlay .ir-scandal-severity-tag{display:inline-flex;align-items:center;margin:2px 0 8px;padding:3px 9px;border-radius:7px;font-size:12px;font-weight:700;color:#9f3129;background:#fff0ec;border:1px solid #f3c6bf}
+</style>
+<script id="ir-scandal-visual-clarity-v244">
+(function(){'use strict';
+ const official={leak:{id:'leak',name:'芸能人裏情報',handle:'@bakuro'}, 'magazine:bunshun':{id:'magazine:bunshun',name:'週刊文春',handle:'@bunshun'},'magazine:friday':{id:'magazine:friday',name:'FRIDAY',handle:'@Friday'},'magazine:seven':{id:'magazine:seven',name:'女性セブン',handle:'@joseiseven'},'magazine:flash':{id:'magazine:flash',name:'FLASH',handle:'@FLASH'}};
+ const hash=s=>{let h=2166136261;for(const ch of String(s||''))h=Math.imul(h^ch.charCodeAt(0),16777619);return h>>>0};
+ function incidentFor(p){return (state.idolRoadIncidents||[]).find(e=>String(e.id)===String(p.incidentId));}
+ function severity(e){const v=String(e?.severity||e?.size||e?.scale||'中');return v.includes('大')?3:v.includes('小')?1:2;}
+ const moods={
+  1:['まだ詳しいことが分からないから様子見かな。','事実かどうか分からないし、落ち着いて待ちたい。','この話、情報が少なすぎる。'],
+  2:['公式から何か説明があるまで判断できない。','ファンとしてはかなり心配。早く事実関係を知りたい。','意見が分かれてるけど、憶測だけで叩くのは違う。','グループの今後に影響しないか不安。'],
+  3:['これ、界隈だけじゃなくてかなり広まってる…。','あちこちで話題になってる。公式からの説明が必要だと思う。','ファンとして本当に複雑。事実を早く知りたい。','ほかのメンバーにまで影響が出てるのが心配。','騒ぎが大きすぎて落ち着かない。']
+ };
+ function fix(){let changed=false;const posts=state.idolXPosts||[];
+  for(const p of posts){if(!p?.incidentId)continue;const kind=p.incidentKind;if(!['leak','magazine'].includes(kind))continue;
+   const e=incidentFor(p),lvl=severity(e),label=['','小規模炎上','中規模炎上','大規模炎上'][lvl];
+   const id=kind==='leak'?'leak':(e?.publishedMagazineIds||[])[0]||((String(p.account||'').startsWith('magazine:'))?p.account:'magazine:bunshun');
+   const a=official[id]||official['magazine:bunshun'];
+   if(p.account!==a.id||p.name!==a.name||p.handle!==a.handle){p.account=a.id;p.name=a.name;p.handle=a.handle;changed=true;}
+   if(p.irScandalScaleLabel!==label){p.irScandalScaleLabel=label;changed=true;}
+   if(p.irScandalSeverityV244!==lvl){p.irScandalSeverityV244=lvl;changed=true;}
+   const available=posts.filter(r=>String(r.replyTo||'')===String(p.id)&&r.irScandalWaveV159);
+   for(const [j,r] of available.entries()){
+    // Make waves visibly different without fabricating extra history or changing official statements.
+    const text=moods[lvl][hash(String(r.id)+':'+j)%moods[lvl].length];
+    if(r.irScandalWaveTextV244!==lvl){r.body=text;r.irScandalWaveTextV244=lvl;changed=true;}
+   }
+  }
+  return changed;
+ }
+ // Run before post data reaches the SNS renderer, so restored account matches the original built-in avatar.
+ const original=window.__idolRoadXGetPosts;
+ if(typeof original==='function')window.__idolRoadXGetPosts=function(){const posts=original.apply(this,arguments);try{fix();}catch(e){console.error('v244 source restore:',e);}return posts};
+ // Existing profile and incident icons are stored in the original HTML; don't substitute new imagery.
+ try{if(fix()&&typeof save==='function')save();}catch(e){console.warn('v244 initial source restore:',e)}
+ const priorDay=window.addDay;
+ if(typeof priorDay==='function')window.addDay=function(){const value=priorDay.apply(this,arguments);try{if(fix()&&typeof save==='function')save()}catch(e){}return value};
+ window.IR_SCANDAL_244={fix,severity};
+})();
+</script>
+
+
+<script id="ir-scandal-handshake-mental-v246">
+(function(){'use strict';
+ function apply(e,participants,findMember){
+  if(!e||!Array.isArray(participants))return;
+  state.irScandalHandshakeMentalV246??={};
+  for(const p of participants){
+   if((p.winners||0)<1)continue;
+   const m=findMember(e,p);if(!m)continue;
+   const cases=[...(state.idolRoadIncidents||[]),...(state.irSnsFire?.events||[])].filter(x=>String(x.memberId)===String(m.id)&&irXIncidentActiveV246(x));
+   if(!cases.length)continue;
+   const level=Math.max(...cases.map(x=>({小:1,中:2,大:3}[x.severity]||2)));
+   const key=String(e.id)+':'+String(m.id);
+   if(Object.prototype.hasOwnProperty.call(state.irScandalHandshakeMentalV246,key))continue;
+   const loss=({1:4,2:8,3:14})[level];
+   m.mental=Math.max(0,Math.min(100,Number(m.mental??70)-loss));
+   state.irScandalHandshakeMentalV246[key]=loss;
+   if(typeof notice==='function')notice((m.stageName||m.name)+'：炎上中の'+(e.type||'イベント')+'で精神的な負担が増え、メンタルが'+loss+'下がりました。');
+  }
+ }
+ window.IR_SCANDAL_EVENT_MENTAL_V246=apply;
+})();
+</script>
+
+<script id="ir-scandal-critical-reactions-v246">
+(function(){'use strict';
+ const hash=v=>{let h=2166136261;for(const c of String(v||''))h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0};
+ const pools={
+  小:['まだ説明がないのに普通に投稿するんだ…。','この投稿を見るとちょっと複雑な気持ちになる。','まず今回のことについて話してほしい。','事実が分かるまで判断できないけど気になる。'],
+  中:['この状況で普通に投稿するの、正直どうなんだろう。','そんな余裕はあるんだね…。','ファンが心配してること、伝わってるのかな。','まず説明してほしいという気持ちがある。','今は何を投稿しても複雑な反応になるよね。'],
+  大:['今このタイミングでこの投稿なの？','そんな余裕あるならちゃんと説明してほしい。','早く辞めてほしいと思ってしまう。','他のメンバーに迷惑をかけてること考えてほしい。','この状況を軽く考えてるように見える。','もう応援できないという人の気持ちも分かる。']
+ };
+ function active(m){
+  const out=[];
+  for(const e of state.idolRoadIncidents||[])if(String(e.memberId)===String(m)&&irXIncidentActiveV246(e))out.push(e);
+  for(const e of state.irSnsFire?.events||[])if(String(e.memberId)===String(m)&&irXIncidentActiveV246(e))out.push(e);
+  return out.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ }
+ function generate(){
+  const posts=state.idolXPosts||[];let changed=false;
+  const current=String(today());
+  for(const p of [...posts]){
+   if(!String(p?.account||'').startsWith('member:')||p.repostOf||p.replyTo||!String(p.body||'').trim())continue;
+   if(String(p.date||'')!==current||p.irScandalHandledV246)continue;
+   const inc=active(String(p.account).slice(7))[0];if(!inc)continue;
+   p.irScandalHandledV246=true;changed=true;
+   const lvl=String(inc.severity||'中'), lines=pools[lvl]||pools.中;
+   const count={小:1,中:3,大:6}[lvl]||3;
+   // Both quote posts and replies. Do not claim every comment is negative.
+   for(let i=0;i<count;i++){
+    const h=hash(p.id+':'+i),quote=i%3===0;
+    const names=['ゆう','りく','さえ','みお','あや','あおい','なつ','れん','こはる','かな'];
+    const name=names[h%names.length],body=lines[(h>>>4)%lines.length];
+    posts.unshift({id:'ircrit246_'+h.toString(36),account:'fan:scandal246:'+h.toString(36),name,handle:'@'+['yuu','riku','sae','mio','aya','aoi','natsu','ren','koharu','kana'][h%10]+String(10+h%90),body,date:current,likes:Math.max(1,Math.round((h%60+5)*(lvl==='大'?4:lvl==='中'?2:1))),reposts:Math.round(h%15),replyTo:quote?null:p.id,quoteOf:quote?p.id:null,irScandalCriticalV246:true,irScandalIncidentIdV246:String(inc.id)});
+   }
+  }
+  return changed;
+ }
+ const old=window.__idolRoadXGetPosts;
+ if(typeof old==='function')window.__idolRoadXGetPosts=function(){try{if(generate()&&typeof save==='function')save()}catch(e){console.warn('v246 critical X',e)}return old.apply(this,arguments)};
+ const priorDay=window.addDay;
+ if(typeof priorDay==='function')window.addDay=function(){const r=priorDay.apply(this,arguments);try{if(generate()&&typeof save==='function')save()}catch(e){}return r};
+ window.IR_SCANDAL_CRITICISM_V246={generate,active};
+})();
+</script>
+
 </body></html>
