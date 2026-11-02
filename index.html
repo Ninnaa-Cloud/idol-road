@@ -542,13 +542,24 @@ function memberMbti(p){if(p.mbti)return p.mbti;const it=p.interview||{},ext=it.i
 function makeExtraSkills(p){const result={};EXTRA_SKILLS.forEach(k=>result[k]={grade:rank(p.experience==='経験者'),xp:0});return result}
 function memberGrade(p,k){if(k==='ビジュアル')return p.visual||'B';if(k==='スタイル')return p.style||'B';if(k==='歌')return p.camp?.song||'B';if(k==='ダンス')return p.camp?.dance||'B';return p.extraSkills?.[k]?.grade||'B'}
 function memberXp(p,k){return p.skillXp?.[k]??p.extraSkills?.[k]?.xp??0}
+// Group-by-group external joint-event invitation preferences are persisted on the group record.
+document.addEventListener('click',function(e){
+ const button=e.target.closest?.('[data-ext-offers-toggle]');
+ if(!button)return;
+ const g=(state.groups||[]).find(x=>String(x.id)===String(button.getAttribute('data-ext-offers-toggle')));
+ if(!g)return;
+ const stopping=!g.externalOffersDisabled;
+ if(stopping&&!confirm('このグループへの新規の外部対バン出演依頼を停止しますか？\nすでに届いている依頼と承諾済みの出演には影響しません。'))return;
+ g.externalOffersDisabled=stopping;
+ save();renderGroups();
+});
 let selectedGroupId=null,selectedMemberId=null;
 function renderGroups(){const groups=state.groups||[],box=el('content');box.className='';if(!groups.length){box.innerHTML='<div class="empty">契約済みグループはまだありません。</div>';return}
 if(!groups.some(g=>g.id===selectedGroupId))selectedGroupId=null;
 let g=groups.find(g=>g.id===selectedGroupId);
 box.innerHTML=`<h3>グループ管理</h3><div class="audbar">${groups.map(x=>`<button data-group="${safe(x.id)}" class="${g?.id===x.id?'primary':''}">${safe(x.name)}</button>`).join('')}</div><div id="groupDetail"></div>`;
 box.querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>{selectedGroupId=b.dataset.group;selectedMemberId=null;renderGroups()});if(!g){el('groupDetail').innerHTML='<p>グループを選択してください。</p>';return}
-const currentMembers=g.members.filter(p=>!p.idolRoadDismissed);const formerMembers=g.members.filter(p=>p.idolRoadDismissed);const m=currentMembers.find(p=>p.id===selectedMemberId);el('groupDetail').innerHTML=`<h3>${safe(g.name)}</h3><p>公式Xフォロワー：${Math.max(0,Math.round(Number(state.idolXFollowers?.['group:'+g.id])||0)).toLocaleString('ja-JP')}人</p><p>グループ知名度：${Math.min(IDOL_FAME_MAX,Math.max(0,Number(g.fame)||0)).toLocaleString('ja-JP')} / 100,000 / メンバー：${currentMembers.length}人</p><div class="audlist">${currentMembers.map(p=>`<button class="member-card" data-member="${safe(p.id)}"><span class="member-photo"><img src="${MEMBER_PHOTOS[p.profilePhotoId]||''}" alt="${safe(p.stageName||p.name)}のプロフィール写真" style="width:100%;height:100%;object-fit:cover"></span><b>${safe(p.stageName||p.name)}</b>${p.activityStatus==='活動休止'?'<small>活動休止中</small>':''}<small>${safe(p.nickname||'')} / ${safe(p.color||'カラー制度なし')}</small><small>${safe(p.birthDate||'未設定')}　${safe(p.origin||'')}</small><small>${p.height||'―'}cm / ${safe(p.mbti||'未設定')}</small></button>`).join('')}</div>${(formerMembers.length||(g.irDepartureHistory||[]).length)?`<details style="margin-top:14px"><summary>退所・契約解除したメンバー（${formerMembers.length+(g.irDepartureHistory||[]).length}人）</summary><ul>${formerMembers.map(p=>`<li>${safe(p.stageName||p.name)}（${p.irDepartureType==='本人希望退所'?'本人の申し出による退所':'契約解除'}）</li>`).join('')}${(g.irDepartureHistory||[]).map(h=>`<li>${safe(h.name)}（${h.type==='本人希望退所'?'退所日':'卒業日'}：${safe(h.date)}／${h.type==='本人希望退所'?'本人の申し出による退所':h.type==='解雇'?'契約解除':safe(({future:'将来への不安',solo:'ソロ活動への挑戦',health:'体調・メンタル面',conflict:'人間関係'}[h.reason]||h.reason))}）</li>`).join('')}</ul></details>`:''}<div id="memberDetail"></div>`;
+const currentMembers=g.members.filter(p=>!p.idolRoadDismissed);const formerMembers=g.members.filter(p=>p.idolRoadDismissed);const m=currentMembers.find(p=>p.id===selectedMemberId);el('groupDetail').innerHTML=`<h3>${safe(g.name)}</h3><p>公式Xフォロワー：${Math.max(0,Math.round(Number(state.idolXFollowers?.['group:'+g.id])||0)).toLocaleString('ja-JP')}人</p><p>グループ知名度：${Math.min(IDOL_FAME_MAX,Math.max(0,Number(g.fame)||0)).toLocaleString('ja-JP')} / 100,000 / メンバー：${currentMembers.length}人</p><div style="margin:12px 0;padding:12px;border:1px solid var(--line,#d5d9df);border-radius:10px"><b>外部対バンの出演依頼</b><p style="margin:6px 0;font-size:.9em">${g.externalOffersDisabled?'停止中：新規の外部対バン依頼は届きません。':'受付中：外部対バンの依頼が届きます。'}</p><button type="button" class="${g.externalOffersDisabled?'primary':''}" data-ext-offers-toggle="${safe(g.id)}">${g.externalOffersDisabled?'依頼受付を再開する':'外部対バンの依頼受付を停止する'}</button><small style="display:block;margin-top:6px">すでに届いたメール・承諾済みの出演予定・フェスや番組の依頼には影響しません。</small></div><div class="audlist">${currentMembers.map(p=>`<button class="member-card" data-member="${safe(p.id)}"><span class="member-photo"><img src="${MEMBER_PHOTOS[p.profilePhotoId]||''}" alt="${safe(p.stageName||p.name)}のプロフィール写真" style="width:100%;height:100%;object-fit:cover"></span><b>${safe(p.stageName||p.name)}</b>${p.activityStatus==='活動休止'?'<small>活動休止中</small>':''}<small>${safe(p.nickname||'')} / ${safe(p.color||'カラー制度なし')}</small><small>${safe(p.birthDate||'未設定')}　${safe(p.origin||'')}</small><small>${p.height||'―'}cm / ${safe(p.mbti||'未設定')}</small></button>`).join('')}</div>${(formerMembers.length||(g.irDepartureHistory||[]).length)?`<details style="margin-top:14px"><summary>退所・契約解除したメンバー（${formerMembers.length+(g.irDepartureHistory||[]).length}人）</summary><ul>${formerMembers.map(p=>`<li>${safe(p.stageName||p.name)}（${p.irDepartureType==='本人希望退所'?'本人の申し出による退所':'契約解除'}）</li>`).join('')}${(g.irDepartureHistory||[]).map(h=>`<li>${safe(h.name)}（${h.type==='本人希望退所'?'退所日':'卒業日'}：${safe(h.date)}／${h.type==='本人希望退所'?'本人の申し出による退所':h.type==='解雇'?'契約解除':safe(({future:'将来への不安',solo:'ソロ活動への挑戦',health:'体調・メンタル面',conflict:'人間関係'}[h.reason]||h.reason))}）</li>`).join('')}</ul></details>`:''}<div id="memberDetail"></div>`;
 el('groupDetail').querySelectorAll('[data-member]').forEach(b=>b.onclick=()=>{selectedMemberId=b.dataset.member;renderGroups();const profile=el('memberDetail');if(profile){profile.scrollIntoView({behavior:'smooth',block:'start'});}});if(!m)return;
 if(!Number.isInteger(m.profilePhotoId)){const taken=new Set(state.groups.flatMap(g=>g.members.map(x=>x.profilePhotoId).filter(Number.isInteger)));const free=Array.from({length:MEMBER_PHOTOS.length},(_,i)=>i).filter(i=>!taken.has(i));if(free.length)m.profilePhotoId=free[Math.floor(Math.random()*free.length)]}if(!m.extraSkills)m.extraSkills=makeExtraSkills(m);if(m.motivationLevel==null)m.motivationLevel=initialMotivationLevel(m.passion);if(m.mental==null)m.mental=rand(65,100);if(m.fatigue==null)m.fatigue=rand(0,25);if(!m.mbti)m.mbti=memberMbti(m);if(!m.birthDate)m.birthDate=memberBirth(m);if(m.followers==null)m.followers=0;save();
 const skills=['ビジュアル','スタイル','歌','ダンス',...EXTRA_SKILLS];el('memberDetail').innerHTML=`<div class="audbox"><img src="${MEMBER_PHOTOS[m.profilePhotoId]||''}" alt="プロフィール写真" style="width:180px;max-width:100%;border-radius:12px;float:right;margin:0 0 12px 12px"><h3>${safe(m.stageName||m.name)} のプロフィール</h3>${m.activityStatus==='活動休止'?'<p>活動休止中（活動再開は事務所の承認後）</p>':''}<p>本名：${safe(m.name)} / ニックネーム：${safe(m.nickname||'未設定')} / メンバーカラー：${safe(m.color||'なし')}</p><p>生年月日：${safe(m.birthDate)} / 出身地：${safe(m.origin)} / 身長：${m.height}cm / MBTI：${safe(m.mbti)}</p><p>個人SNSフォロワー：${Math.max(0,Math.round(Number(state.idolXFollowers?.['member:'+m.id])||0)).toLocaleString('ja-JP')}人</p><h4>能力評価</h4><div class="skill-grid">${skills.map(k=>`<div><b>${k}</b><strong>${memberGrade(m,k)}</strong><small>経験値 ${memberXp(m,k)%1000} / 1000　Lv.${1+Math.floor(memberXp(m,k)/1000)}</small></div>`).join('')}</div><h4>コンディション</h4><p>やる気度：${m.motivationLevel}/100（高いほど意欲的）</p><progress max="100" value="${m.motivationLevel}"></progress><p>メンタル：${m.mental}/100（高いほど良好）</p><progress max="100" value="${m.mental}"></progress><p>疲労度：${m.fatigue}/100（高いほど悪化）</p><progress max="100" value="${m.fatigue}"></progress></div>`}
@@ -2063,6 +2074,8 @@ function extProcess(){
    if(p.sent.includes(i)||p.days[i]>state.day)continue;
    const g=(state.groups||[]).find(g=>String(g.id)===String(p.groupId));
    if(!g){p.sent.push(i);continue;}
+   // User-controlled group-level opt-out: leave existing invitations and bookings intact.
+   if(g.externalOffersDisabled){p.sent.push(i);continue;}
    if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now)){
     // A temporarily blocked invitation must not silently consume a planned mail.
     // Move it to a free future day, or retry the next game day if the month is ending.
@@ -4048,52 +4061,85 @@ function onLeavingDay(){for(const r of records()){
  if(r.status==='recorded'&&r.broadcastDate===today())applyBroadcast(r);if(r.status==='accepted'&&!r.recordDate&&r.kind==='feature'&&r.broadcastDate===today()){r.status='recorded';applyBroadcast(r);}
  }save();}
 
-function generate(){if(!state.agency||!groups().length)return;const now=today();if(state.musicTVOfferCheck===now)return;state.musicTVOfferCheck=now;if(![1,8,15,22].includes(dateObj().getDate())){save();return;}for(const g of groups()){if(String(g.irContractOfferRestrictionUntil||'')>=now)continue;
- const recentSongBuzz=window.IDOL_RECENT_BUZZ.song(g,now);const market=irSongMarketSignal(g);
- // Two independent ways into music programming: established star status OR a breakout song.
- // Keep the program's seasonal calendar and requirement to have a released song.
- const popularity=Math.max(0,Math.min(1,groupPopularityPoints(g).total/8000));
- const hit=Math.max(0,Math.min(1,market/4));
- const buzz=Math.max(0,Math.min(1,recentSongBuzz/4));
- const breakout=Math.max(hit,buzz);
- const recognition=Math.max(0,Number(fame(g))||0);
- const effectiveReach=Math.max(recognition,recognition+popularity*30000,breakout*52000+recognition*.5);
- const possible=CATALOG.filter(x=>effectiveReach>=x.min&&(!x.month||x.month===state.month)&&songs(g).length);
- if(!possible.length)continue;
- const month=now.slice(0,7);
- const strength=IR_INVITATION_DEMAND(g,null,'music');
- const starAppeal=Math.max(strength,popularity*.92);
- const appeal=Math.max(starAppeal,breakout*.95,Math.min(1,starAppeal*.65+breakout*.80));
- const shots=IR_OFFER_DRAWS_V228(appeal,breakout);
- // No fixed monthly offer cap; each opportunity is still a probability-weighted draw.
- for(let attempt=0;attempt<shots;attempt++){
-   if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now))continue;
-   const used=new Set(records().filter(r=>String(r.groupId)===String(g.id)&&r.received?.slice(0,7)===now.slice(0,7)).map(r=>r.name));
-   const choices=possible.filter(c=>!used.has(c.name));if(!choices.length)break;
-   // v242: popular groups are routinely booked on BS/CS and late-night music TV,
-   // irrespective of a particular song going viral. Draw count is unchanged.
-   const fameScore=Math.max(0,Math.min(1,recognition/100000));
-   const activeMembers=(g.members||[]).filter(m=>!m.idolRoadDismissed);
-   const performanceScore=activeMembers.length?activeMembers.reduce((sum,m)=>sum+(['歌','ダンス'].reduce((v,k)=>v+Math.max(0,Math.min(1,popularitySkillPoints(m,k)/8000)),0)/2),0)/activeMembers.length:0;
-   const starScore=.45*popularity+.35*fameScore+.20*performanceScore;
-   const choiceWeight=c=>{
-     // Better-established groups have more routine TV work, but prime and
-     // major-special eligibility/difficulty are retained.
-     const main=(c.tier==='BS/CS'||c.tier==='地上波深夜');
-     return main?(1+3*starScore):1;
-   };
-   const totalWeight=choices.reduce((sum,c)=>sum+choiceWeight(c),0);
-   let ticket=Math.random()*totalWeight,chosen=choices[choices.length-1];
-   for(const c of choices){ticket-=choiceWeight(c);if(ticket<0){chosen=c;break;}}
-   const tier=chosen.tier==='特番'?'special':chosen.tier==='地上波'?'prime':'standard';
-   const base=IR_OFFER_PROB_V228(appeal,breakout,1);
-   // Star-based floor on routine bookings: no song-buzz requirement.
-   const routine=Math.min(.95,.16+.86*starScore);
-   const chance=tier==='standard'?Math.max(base,routine):IR_MEDIA_RETURN_V240.probability(base,g,'music',tier);
-   if(Math.random()>=chance)continue;
-   invite(g,chosen);
+// v268: separate established-group and genuine-song-hit routes across EVERY music-TV tier.
+// The individual special-program selection is annual, not repeated four times per month.
+function generate(){
+ if(!state.agency||!groups().length)return;
+ const now=today();
+ if(state.musicTVOfferCheck===now)return;
+ state.musicTVOfferCheck=now;
+ const clamp=x=>Math.max(0,Math.min(1,Number(x)||0));
+ const daysSince=date=>Math.round((new Date(now+'T12:00:00')-new Date(date+'T12:00:00'))/86400000);
+ for(const g of groups()){
+  if(String(g.irContractOfferRestrictionUntil||'')>=now)continue;
+  if(!songs(g).length)continue;
+  if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,now))continue;
+  const published=songList(g);
+  const recognition=Math.max(0,Number(fame(g))||0);
+  const fameScore=clamp(recognition/100000);
+  const popularity=clamp(groupPopularityPoints(g).total/8000);
+  const activeMembers=(g.members||[]).filter(m=>!m.idolRoadDismissed);
+  const performance=activeMembers.length?activeMembers.reduce((sum,m)=>sum+(['歌','ダンス'].reduce((v,k)=>v+clamp(popularitySkillPoints(m,k)/8000),0)/2),0)/activeMembers.length:0;
+  const established=clamp(.42*popularity+.40*fameScore+.18*performance);
+  // A lasting hit is established by distribution numbers or sustained major song buzz,
+  // not by an unrelated member's X post or a one-off small SNS spike.
+  const year=Number(state.year);
+  let songHit=0,annualHit=0;
+  for(const t of published){
+   const units=Math.max(0,Number(t.streamUnits)||0,Number(t.cdUnits)||0);
+   const sales=units>=2000000?1:units>=1000000?.94:units>=500000?.76:units>=100000?.42:units>=30000?.18:0;
+   const history=Array.isArray(t.buzzHistory)?t.buzzHistory:[];
+   const relevant=history.filter(h=>String(h.date||'').slice(0,4)===String(year));
+   const maxLevel=Math.max(0,...relevant.map(h=>Number(h.level)||0));
+   const majorDays=relevant.filter(h=>(Number(h.level)||0)>=3).reduce((v,h)=>v+Math.max(0,Number(h.days)||0),0);
+   const lasting=majorDays>=60?1:majorDays>=28?.90:majorDays>=14?.73:majorDays>=7?.52:0;
+   const viral=maxLevel>=4?Math.max(.40,lasting):maxLevel>=3?lasting:maxLevel===2?.24:0;
+   const hit=Math.max(sales,viral);
+   songHit=Math.max(songHit,hit);
+   // Annual impact: a current-year release or a major buzz campaign this year.
+   if(String(t.publishDate||'').slice(0,4)===String(year)||relevant.length)annualHit=Math.max(annualHit,hit);
+  }
+  // Both routes stand on their own: a massive hit can open even prime-time TV
+  // while a well-established act can appear without a current viral song.
+  const route=Math.max(established,songHit);
+  const candidateReach=Math.max(recognition+popularity*30000,songHit*100000);
+  const received=records().filter(r=>String(r.groupId)===String(g.id)&&r.received);
+  const offerOne=(tier,chance,cooldown)=>{
+   if(Math.random()>=clamp(chance))return;
+   const choices=CATALOG.filter(c=>c.tier===tier&&c.min<=candidateReach&&!c.month&&!received.some(r=>r.name===c.name&&daysSince(r.received)>=0&&daysSince(r.received)<cooldown));
+   if(!choices.length)return;
+   const choice=choices[Math.floor(Math.random()*choices.length)];
+   const created=invite(g,choice);if(created)received.push(created);
+  };
+  // Target for a near-top established act: BS/CS 10-15, late-night 10-15,
+  // prime-time 3-6 requests a month before program-specific cooldown saturation.
+  // Baseline is zero for genuinely unknown/unpopular acts with no hit.
+  const routine=Math.pow(route,1.45);
+  offerOne('BS/CS',.51*routine,5);
+  offerOne('地上波深夜',.49*routine,5);
+  offerOne('地上波',.205*Math.pow(route,2.0),8);
+  // Every special has its own yearly eligibility and probability, preserving
+  // the seasonal calendar. Selection takes place once, on the first of its month.
+  if(Number(state.day)!==1)continue;
+  for(const c of CATALOG.filter(c=>c.tier==='特番'&&c.month===Number(state.month))){
+   if(received.some(r=>r.name===c.name&&String(r.received||'').slice(0,4)===String(year)))continue;
+   const isKohaku=c.name==='NHK紅白歌合戦';
+   const weight=c.name.includes('SUPER LIVE')||c.name.includes('CDTV年越し')?[.30,.30,.40]:[.35,.35,.30];
+   const base=clamp(weight[0]*fameScore+weight[1]*popularity+weight[2]*songHit);
+   const kohaku=clamp(.15*fameScore+.15*popularity+.70*annualHit);
+   const qualify=isKohaku?Math.max(kohaku,annualHit*.90):Math.max(base,songHit*.90);
+   // No ordinary mid-level artist without a hit on prime-time specials.
+   // A rare exceptional crossover hit is allowed an independent route.
+   if(isKohaku){if(annualHit<.50&&established<.85)continue;if(qualify<.48)continue;}
+   else if(established<.62&&songHit<.72)continue;
+   const chance=isKohaku?
+     clamp(.04+.91*Math.pow(Math.max(0,(qualify-.42)/.58),1.25)):
+     clamp(.10+.85*Math.pow(Math.max(0,(qualify-.50)/.50),1.15));
+   if(Math.random()<chance){const created=invite(g,c);if(created)received.push(created);}
+  }
  }
- }save();}
+ save();
+}
 const oldAddDay=addDay;addDay=function(){onLeavingDay();oldAddDay();onEnteringDay();generate();};
 function onEnteringDay(){for(const r of records()){if(r.status==='recorded'&&r.broadcastDate===today())applyBroadcast(r);if(r.status==='accepted'&&!r.recordDate&&r.kind==='feature'&&r.broadcastDate===today()){r.status='recorded';applyBroadcast(r);}}save();}
 const oldRender=render;render=function(){oldRender();if(state.tab==='活動'&&state.sub==='音楽番組')renderMusic();};
@@ -4132,6 +4178,17 @@ const gradeScore=(v)=>{if(typeof v==='number')return Math.min(8000,Math.max(0,v)
 const talk=m=>gradeScore(m.extraSkills?.['トーク']?.grade||m.extraSkills?.['トーク']?.rank||m.extraSkills?.['トーク']||m.talk||m.skills?.talk);
 const buzz=m=>{const n=Number(m.xBuzz??m.snsBuzz??m.buzz??m.x?.buzz??0);return Math.max(0,Math.min(8000,n>8000?8000:n));};
 const score=(g,m)=>m?fame(g)*.5+talk(m)*.2+buzz(m)*.3:fame(g)*.9+(g.members||[]).reduce((s,x)=>s+talk(x),0)/Math.max(1,(g.members||[]).length)*.1;
+// v270: audience eligibility is separate from performance suitability.
+// Low-tier newcomers retain a rare chance; high tiers require an actual audience.
+const IR_V270_CLAMP=x=>Math.max(0,Math.min(1,Number(x)||0));
+function IR_V270_AUDIENCE(g,m,tier){
+ const f=Math.max(0,fame(g)),gp=groupPopularityPoints(g).total,mp=m?popularityPoints(m):gp;
+ if(tier==='prime'&&(f<16000||gp<3500||(m&&mp<2200)))return {ok:false,reach:0};
+ if(tier==='special'&&(f<35000||gp<4800||(m&&mp<3000)))return {ok:false,reach:0};
+ if(tier==='late'&&(f<1500||gp<750||(m&&mp<350)))return {ok:false,reach:0};
+ const reach=IR_V270_CLAMP(.42*f/100000+.33*gp/8000+.25*mp/8000);
+ return {ok:true,reach};
+}
 const ageOk=(m,slot)=>{const age=memberAge(m.birthDate||m.birth||m.birthday);if(!Number.isFinite(age))return false;const [start,end]=slot.split('-').map(x=>{const [h,min]=x.split(':').map(Number);return h+(min||0)/60});const limit=age<15?20:age<18?22:24;return start>=5&&end<=limit&&end>start};
 const memberName=m=>m.stageName||m.name||'メンバー';
 const memberId=m=>String(m.id);
@@ -4162,38 +4219,43 @@ function generate(){
  if(!state.agency||!groups().length)return;
  const key=todayKey(),month=key.slice(0,7);
  if(!IR_OFFER_DATES_V228.includes(Number(state.day)))return;
- // One draw session per scheduled date, including after loading older saves.
  if(state.varietyOfferChecked===key)return;
  state.varietyOfferChecked=key;
  const isSpecial=(state.month===4||state.month===10);
- const monthlyOdds={net:.25,late:.15,prime:.055,special:.025};
+ // Each performer (and the group itself) gets an independently evaluated draw.
+ // The number of opportunities is deliberately not multiplied by the old shared pool draw count.
  for(const tier of ['net','late','prime',...(isSpecial?['special']:[])]){
-  const options=[];
-  for(const g of groups())for(const show of CATALOG.filter(x=>x.tier===tier)){
+  for(const g of groups()){
    if(String(g.irContractOfferRestrictionUntil||'')>=key)continue;
-   if(show.mode!=='solo'&&score(g,null)>=RULES[tier].min)options.push({g,show,m:null});
-   if(show.mode!=='group')for(const m of g.members||[])
-    if(score(g,m)>=RULES[tier].min)options.push({g,show,m});
-  }
-  const filtered=options.filter(o=>!records().some(r=>r.name===o.show.name&&['offered','accepted','recorded','broadcasted'].includes(r.status)&&r.received>=plus(key,-90)));
-  if(!filtered.length)continue;
-  const strength=Math.max(0,Math.min(1,Math.max(...filtered.map(o=>IR_INVITATION_DEMAND(o.g,o.m,'variety')))));
-  const draws=IR_OFFER_DRAWS_V228(strength,0);
-  // No fixed per-tier or total monthly offer cap.
-  for(let trial=0;trial<draws;trial++){
-   // v252: share the EXISTING prime-time draw slots with individual regular contracts.
-   if(tier==='prime' && window.IR_VARIETY_REGULAR_V252?.tryDraw?.(key,CATALOG,records()))continue;
-   const unused=filtered.filter(o=>!records().some(r=>r.name===o.show.name&&r.received?.slice(0,7)===month));
-   if(!unused.length)break;
-   const peak=Math.max(0,...unused.map(o=>o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key)));
-   const weighted=unused.map(o=>({o,w:1+Math.max(0,score(o.g,o.m))/8000*2+(o.m?window.IDOL_RECENT_BUZZ.member(o.m,key):window.IDOL_RECENT_BUZZ.group(o.g,key))*.22}));
-   let draw=Math.random()*weighted.reduce((a,v)=>a+v.w,0);const x=(weighted.find(v=>(draw-=v.w)<=0)||weighted[weighted.length-1]).o;
-   const memberBuzz=x.m?window.IDOL_RECENT_BUZZ.member(x.m,key):window.IDOL_RECENT_BUZZ.group(x.g,key);
-   const base=IR_VARIETY_OFFER_PROB_V229(strength,memberBuzz,tier);
-   const chance=(tier==='prime'||tier==='special')?IR_MEDIA_RETURN_V240.probability(base,x.g,'variety',tier):base;
-   if(Math.random()>=chance)continue;
-   if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,key))continue;
-   invite(x.g,x.show,x.m);
+   const actors=[null,...(g.members||[]).filter(m=>!m.idolRoadDismissed)];
+   for(const m of actors){
+    if(m&&String(m.irContractOfferRestrictionUntil||'')>=key)continue;
+    const audience=IR_V270_AUDIENCE(g,m,tier);
+    if(!audience.ok)continue;
+    const eligibleShows=CATALOG.filter(show=>show.tier===tier&&(m?show.mode!=='group':show.mode!=='solo')&&score(g,m)>=RULES[tier].min);
+    if(!eligibleShows.length)continue;
+    const demand=IR_INVITATION_DEMAND(g,m,'variety');
+    const recentBuzz=m?window.IDOL_RECENT_BUZZ.member(m,key):window.IDOL_RECENT_BUZZ.group(g,key);
+    // Own demand determines own opportunity count and chance; never use another member's peak.
+    const draws=Math.max(1,Math.ceil(IR_OFFER_DRAWS_V228(demand,0)/Math.max(2,(g.members||[]).length)));
+    for(let trial=0;trial<draws;trial++){
+     // New regular contract: only the current individual may qualify.
+     if(tier==='prime'&&m&&window.IR_VARIETY_REGULAR_V252?.tryDraw?.(key,CATALOG,records(),String(m.id)))continue;
+     const unused=eligibleShows.filter(show=>!records().some(r=>r.name===show.name&&r.received>=plus(key,-90)&&['offered','accepted','recorded','broadcasted'].includes(r.status))&&!records().some(r=>r.name===show.name&&r.received?.slice(0,7)===month));
+     if(!unused.length)break;
+     const show=unused[Math.floor(Math.random()*unused.length)];
+     const base=IR_VARIETY_OFFER_PROB_V229(demand,recentBuzz,tier);
+     const returnAdjusted=(tier==='prime'||tier==='special')?IR_MEDIA_RETURN_V240.probability(base,g,'variety',tier):base;
+     // Ability/buzz can improve casting suitability but cannot alone create constant offers.
+     const reachFactor=tier==='net'?(0.05+0.95*Math.pow(audience.reach,.68)):
+       tier==='late'?(0.14+0.86*Math.pow(audience.reach,.72)):
+       tier==='prime'?(0.36+0.64*Math.pow(audience.reach,.60)):(0.40+0.60*Math.pow(audience.reach,.65));
+     const chance=returnAdjusted*reachFactor;
+     if(Math.random()>=chance)continue;
+     if(window.IDOL_ROAD_SCANDAL_EFFECTS&&!window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,key))continue;
+     invite(g,show,m);
+    }
+   }
   }
  }
  save();
@@ -4286,45 +4348,48 @@ function shoot(w){
 function effects(w){if(w.status!=='completed')return;const due=w.type==='film'?1:w.episodes;const aired=Array.from({length:due},(_,i)=>add(w.release,w.type==='film'?0:i*7)).filter(d=>d<=date()).length;while(w.effects<aired){const t=TYPES[w.type],m=actor(w),g=(state.groups||[]).find(x=>String(x.id)===String(w.groupId));if(!m||!g)break;const factor=w.lead?1.5:1;const f=Math.round(rand(...t.fame)*factor/due),p=Math.round(rand(...t.pop)*factor/due);g.fame=typeof idolFameAdd==='function'?idolFameAdd(Number(g.fame)||0,f):Math.min(100000,(Number(g.fame)||0)+f);m.popularityBuzzXp=Math.min(8000,(Number(m.popularityBuzzXp)||0)+p);m.dramaFilmPopularityBoost=(Number(m.dramaFilmPopularityBoost)||0)+p;w.fameGained=(w.fameGained||0)+f;w.popGained=(w.popGained||0)+p;w.effects++} }
 function leave(){for(const w of all()){if(w.status==='offered'&&date()>=w.deadline)w.status='expired';if(w.status==='accepted'){const s=w.slots.find(x=>x.date===date());if(s&&!s.done){w.absences++;if(w.absences===1){mailItems().push({id:id(),folder:'inbox',subject:`【撮影欠席に関するご連絡】『${w.title}』`,body:`${state.agency} ご担当者様\n\n${w.sender} 制作担当です。\n本日の撮影にご参加いただけなかったため、警告のご連絡を差し上げます。次回欠席の場合は降板となります。\n\n${w.sender}`,date:date(),from:w.sender,read:false});notice(`『${w.title}』の撮影を欠席しました（1回目）。`)}else{w.status='withdrawn';state.schedule=(state.schedule||[]).filter(x=>x.dramaFilmId!==w.id||x.date<=date());notice(`『${w.title}』を2回欠席したため降板しました。`)}}}}save()}
 function enter(){for(const w of all())effects(w);generate();save()}
-function generate(){if(!state.agency||!(state.groups||[]).length)return;const currentDay=date();if(!IR_OFFER_DATES_V228.includes(Number(state.day)))return;if(state.dramaFilmCheckedDayV228===currentDay)return;state.dramaFilmCheckedDayV228=currentDay;for(const type of Object.keys(TYPES)){const candidates=[];for(const g of state.groups)for(const m of g.members||[])for(const lead of [false,true])if(String(g.irContractOfferRestrictionUntil||'')<currentDay&&String(m.irContractOfferRestrictionUntil||'')<currentDay&&score(m)>=TYPES[type].min[lead?1:0]&&dramaAudienceEligible(g,m,type,lead))candidates.push({g,m,lead});if(!candidates.length)continue;
- const strength=Math.max(0,Math.min(1,Math.max(...candidates.map(x=>IR_INVITATION_DEMAND(x.g,x.m,'drama')))));
- const draws=IR_OFFER_DRAWS_V228(strength,0);
- for(let trial=0;trial<draws;trial++){
-  const trialCandidates=candidates;
-  if(!trialCandidates.length)continue;
-  // v241: short/late roles favor ordinary casting over lead, without altering draw counts.
-  // Prime, film, and lead eligibility/difficulty are unchanged.
-  const weighted=trialCandidates.map(x=>{
-   const base=.2+IR_INVITATION_DEMAND(x.g,x.m,'drama')*5+Math.max(0,score(x.m)-TYPES[type].min[x.lead?1:0])/8000;
-   const roleWeight=((type==='short'||type==='late')?(x.lead?.22:3.4):1);
-   return {x,w:base*roleWeight};
-  });
-  let roll=Math.random()*weighted.reduce((sum,v)=>sum+v.w,0);const x=(weighted.find(v=>(roll-=v.w)<=0)||weighted[weighted.length-1]).x;
-  const eligibility=Math.max(0,Math.min(1,(score(x.m)-TYPES[type].min[x.lead?1:0])/Math.max(1,8000-TYPES[type].min[x.lead?1:0])));
-  const demand=IR_INVITATION_DEMAND(x.g,x.m,'drama');
-  const reach=Math.min(1,Math.max(0,Number(x.g.fame)||0)/100000)*.5+Math.min(1,groupPopularityPoints(x.g).total/8000)*.5;const visibility=Math.pow(reach,.95);const chance=IR_OFFER_PROB_V228(demand,eligibility,(x.lead?({short:.90,late:.68,prime:.42,film:.36}[type]):({short:1,late:.88,prime:.42,film:.36}[type]))*(x.lead?.42:1))*Math.max(x.lead ? .18 : ((type==='short'||type==='late') ? .48 : .18),visibility);
-  // v241: for short/late NON-LEAD roles, strong popularity, awareness, and acting
-  // jointly raise the selection chance. Low acting skill keeps the bonus modest.
-  // This does not change the common four draw dates or shared draw-count formula.
+function generate(){
+ if(!state.agency||!(state.groups||[]).length)return;
+ const currentDay=date();
+ if(!IR_OFFER_DATES_V228.includes(Number(state.day)))return;
+ if(state.dramaFilmCheckedDayV228===currentDay)return;
+ state.dramaFilmCheckedDayV228=currentDay;
+ for(const type of Object.keys(TYPES))for(const g of state.groups)for(const m of g.members||[]){
+  if(m.idolRoadDismissed||String(g.irContractOfferRestrictionUntil||'')>=currentDay||String(m.irContractOfferRestrictionUntil||'')>=currentDay)continue;
+  const roles=[false,true].filter(lead=>score(m)>=TYPES[type].min[lead?1:0]&&dramaAudienceEligible(g,m,type,lead));
+  if(!roles.length)continue;
+  const demand=IR_INVITATION_DEMAND(g,m,'drama');
+  // Independent one-per-member/type/day opportunity, never using other members' demand.
+  // Preserve original non-lead preference and probability evaluation.
+  if(Math.random()>=Math.min(.95,.22+.36*demand))continue;
+  const weighted=roles.map(lead=>({lead,w:((type==='short'||type==='late')?(lead?.22:3.4):1)*(.2+Math.max(0,score(m)-TYPES[type].min[lead?1:0])/8000)}));
+  let roll=Math.random()*weighted.reduce((sum,v)=>sum+v.w,0);
+  const lead=(weighted.find(v=>(roll-=v.w)<=0)||weighted[weighted.length-1]).lead;
+  const eligibility=Math.max(0,Math.min(1,(score(m)-TYPES[type].min[lead?1:0])/Math.max(1,8000-TYPES[type].min[lead?1:0])));
+  const reach=Math.min(1,Math.max(0,Number(g.fame)||0)/100000)*.5+Math.min(1,groupPopularityPoints(g).total/8000)*.5;
+  const visibility=Math.pow(reach,.95);
+  const chance=IR_OFFER_PROB_V228(demand,eligibility,(lead?({short:.90,late:.68,prime:.42,film:.36}[type]):({short:1,late:.88,prime:.42,film:.36}[type]))*(lead?.42:1))*Math.max(lead?.18:((type==='short'||type==='late')?.48:.18),visibility);
   let actualChance=chance;
-  if(!x.lead&&(type==='short'||type==='late')){
+  if(!lead&&(type==='short'||type==='late')){
    const clamp=v=>Math.max(0,Math.min(1,Number(v)||0));
-   const gp=clamp(groupPopularityPoints(x.g).total/8000);
-   const fame=clamp((Number(x.g.fame)||0)/100000);
-   const mp=clamp(popularityPoints(x.m)/8000);
-   const acting=clamp((typeof popularitySkillPoints==='function'?popularitySkillPoints(x.m,'演技'):score(x.m))/8000);
-   // Fast growth only if BOTH market reach and performer suitability are present.
-   const reachQuality=clamp(.48*gp+.32*fame+.20*mp);
-   const performerQuality=clamp((acting-.35)/.65);
+   const gp=clamp(groupPopularityPoints(g).total/8000),fame=clamp((Number(g.fame)||0)/100000),mp=clamp(popularityPoints(m)/8000);
+   const acting=clamp((typeof popularitySkillPoints==='function'?popularitySkillPoints(m,'演技'):score(m))/8000);
+   const reachQuality=clamp(.48*gp+.32*fame+.20*mp),performerQuality=clamp((acting-.35)/.65);
    const score241=reachQuality*performerQuality;
-   const floor241=type==='short'?.18:.14;
-   const target241=(type==='short'?.18:.14)+(type==='short'?.76:.68)*Math.pow(score241,1.12);
-   const boosted=actualChance+Math.max(0,target241-actualChance)*.94;
-   actualChance=Math.min(.97,Math.max(floor241,boosted));
+   const floor241=type==='short'?0:.14;
+   const target241=floor241+(type==='short'?.76:.68)*Math.pow(score241,1.12);
+   actualChance=Math.min(.97,Math.max(floor241,actualChance+Math.max(0,target241-actualChance)*.94));
+   // A strong debut performer still has a small opening, but at fame/popularity zero
+   // there must not be an automatic 18% non-lead success floor.
+   if(type==='short'){
+    const shortReach=clamp(.40*gp+.35*fame+.25*mp);
+    actualChance*=.035+.965*Math.pow(shortReach,.70);
+   }
   }
-  if(Math.random()<actualChance&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(x.g.id,date())))produce(x.g,x.m,type,x.lead);
+  if(Math.random()<actualChance&&(!window.IDOL_ROAD_SCANDAL_EFFECTS||window.IDOL_ROAD_SCANDAL_EFFECTS.invitationAllowed(g.id,currentDay)))produce(g,m,type,lead);
  }
- }save()}
+ save();
+}
 const prevAdd=addDay;addDay=function(){leave();prevAdd();enter()};
 const prevRender=render;render=function(){prevRender();if(state.tab==='活動'&&state.sub==='ドラマ・映画')draw()};
 const prevMail=showMailbox;showMailbox=function(){prevMail();if(!mailSelected)return;const item=mailItems().find(x=>x.id===mailSelected);if(!item?.dramaFilmId||item.folder!=='inbox')return;const w=all().find(x=>x.id===item.dramaFilmId),root=el('drawerBody')?.querySelector('.maildetail');if(!w||!root)return;const info=document.createElement('p');info.textContent=`回答期限：${w.deadline} ／ 状態：${w.status}`;root.append(info);if(w.status==='offered'&&date()<=w.deadline){const row=document.createElement('div');row.className='line';for(const [label,yes] of [['承諾する',true],['辞退する',false]]){const b=document.createElement('button');b.textContent=label;if(yes)b.className='primary';b.onclick=()=>{if(respond(w,yes)){info.textContent=`状態：${w.status}`;row.remove()}};row.append(b)}root.append(row)}};
@@ -7915,7 +7980,7 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  const name=m=>m?.stageName||m?.name||'メンバー';
  const score=(g,m)=> .70*norm(popularitySkillPoints(m,'トーク'))+.10*norm(popularityPoints(m))+.10*norm(g.fame??g.recognition,100000)+.10*norm(popularitySkillPoints(m,'SNS'));
  const evaluate=(g,m)=>.30*norm(popularitySkillPoints(m,'トーク'))+.13*norm(popularitySkillPoints(m,'ファン対応'))+.12*norm(popularitySkillPoints(m,'SNS'))+.20*norm(popularityPoints(m))+.15*norm(groupPopularityPoints(g).total)+.10*norm(g.fame??g.recognition,100000);
- const prob=(g,m)=>Math.max(.01,Math.min(.24,.012+.145*evaluate(g,m)));
+ const prob=(g,m)=>{const v=evaluate(g,m);return Math.max(.008,Math.min(.34,.008+.30*Math.pow(v,1.55)));};
  const renewProb=(g,m)=>Math.max(.06,Math.min(.95,.10+.85*score(g,m)));
  const perAppearance=(g,m)=>Math.round((50000+170000*evaluate(g,m))/1000)*1000;
  const isWeekly=show=>!/せっかくグルメ|帰れマンデー|ぐるぐるナインティナイン|イッテQ/.test(show);
@@ -7923,7 +7988,7 @@ const prevRender=render;render=function(...a){check();return prevRender.apply(th
  const mail=(r,renew)=>{const {g,m}=findMember(r);if(!g||!m)return;const ext=renew?'継続':'新規';const text=`${state.agency||'所属事務所'} ご担当者様\n\n${r.station}『${r.name}』制作担当でございます。\n${name(m)}様にゴールデンバラエティ番組の${ext}レギュラー出演をご依頼申し上げます。\n\n出演形態：個人レギュラー\n契約：1クール（3か月）\n頻度：${r.frequency==='weekly'?'毎週':'月2回程度'}\n期間：${renew?r.nextStart:r.start}〜${renew?r.nextEnd:r.end}\n1収録当たりの出演料：${r.fee.toLocaleString('ja-JP')}円\n\nメール内で承諾・辞退をご選択ください。`;const mObj={id:'regular-mail-'+r.id+'-'+(renew?'renew':'initial'),folder:'inbox',from:r.station+' 制作担当',subject:`【${ext}レギュラー出演のご依頼】${r.name}／${name(m)}`,body:text,date:now(),read:false,varietyRegular252Id:r.id,varietyRegular252Renew:!!renew};mailItems().push(mObj);if(typeof notice==='function')notice(`${r.name}から${name(m)}へ${ext}レギュラー出演依頼が届きました。`);};
  function createSchedule(r,renew=false){const start=renew?r.nextStart:r.start,end=renew?r.nextEnd:r.end;let d=start,n=0;const frequency=r.frequency==='weekly';while(d<end&&n++<100){const count=true;if(count){const recordDate=d,broadcastDate=datePlus(d,7),key=r.id+':'+recordDate;if(!r.sessions.some(x=>x.date===recordDate))r.sessions.push({id:key,date:recordDate,broadcastDate,done:false,feePaid:false});state.schedule??=[];if(!state.schedule.some(x=>x.id===key))state.schedule.push({id:key,date:recordDate,title:`【レギュラーバラエティ収録】${r.name}／${r.memberName} (${r.slot})`,varietyRegular252Id:r.id,memberId:r.memberId,groupId:r.groupId,startTime:r.slot.split('-')[0],endTime:r.slot.split('-')[1],done:true});if(!state.schedule.some(x=>x.id===key+':broadcast'))state.schedule.push({id:key+':broadcast',date:broadcastDate,title:`【レギュラーバラエティ放送】${r.name}／${r.memberName}`,varietyRegular252Id:r.id,done:true});}d=datePlus(d,frequency?7:14);} }
  function hasHistory(g,m,show,records){return records.some(x=>String(x.groupId)===String(g.id)&&String(x.memberId)===String(m.id)&&x.mode==='solo'&&x.name===show.name&&['recorded','broadcasted'].includes(x.status));}
- function tryDraw(key,catalog,records){if(Math.random()>=.40)return false;const candidates=[];for(const g of state.groups||[])for(const m of g.members||[])for(const show of catalog.filter(x=>x.tier==='prime'&&x.mode!=='group')){if(m.idolRoadDismissed||!hasHistory(g,m,show,records))continue;if(R().some(r=>String(r.memberId)===String(m.id)&&r.name===show.name&&!['declined','expired','completed'].includes(r.status)))continue;candidates.push({g,m,show});}if(!candidates.length)return false;const choice=candidates[Math.floor(Math.random()*candidates.length)];const {g,m,show}=choice;if(Math.random()<prob(g,m)){const start=datePlus(key,21),end=monthPlus(start,3);const r={id:id(),groupId:g.id,memberId:String(m.id),memberName:name(m),name:show.name,station:show.station,start,end,frequency:isWeekly(show.name)?'weekly':'twice',slot:slot(show.name),fee:perAppearance(g,m),status:'offered',deadline:datePlus(key,7),sessions:[],quartersCompleted:0,renewalCount:0};R().push(r);mail(r,false);}save();return true;}
+ function tryDraw(key,catalog,records,onlyMemberId=null){if(Math.random()>=.40)return false;const candidates=[];for(const g of state.groups||[])for(const m of g.members||[])for(const show of catalog.filter(x=>x.tier==='prime'&&x.mode!=='group')){if(onlyMemberId!==null&&String(m.id)!==String(onlyMemberId))continue;if(m.idolRoadDismissed||!hasHistory(g,m,show,records))continue;if(R().some(r=>String(r.memberId)===String(m.id)&&r.name===show.name&&!['declined','expired','completed'].includes(r.status)))continue;candidates.push({g,m,show});}if(!candidates.length)return false;const weights=candidates.map(c=>.30+2.7*evaluate(c.g,c.m));let ticket=Math.random()*weights.reduce((a,b)=>a+b,0);let choice=candidates[candidates.length-1];for(let i=0;i<candidates.length;i++){ticket-=weights[i];if(ticket<=0){choice=candidates[i];break;}}const {g,m,show}=choice;if(Math.random()<prob(g,m)){const start=datePlus(key,21),end=monthPlus(start,3);const r={id:id(),groupId:g.id,memberId:String(m.id),memberName:name(m),name:show.name,station:show.station,start,end,frequency:isWeekly(show.name)?'weekly':'twice',slot:slot(show.name),fee:perAppearance(g,m),status:'offered',deadline:datePlus(key,7),sessions:[],quartersCompleted:0,renewalCount:0};R().push(r);mail(r,false);}save();return true;}
  function answer(r,yes,renew){if(renew){if(r.status!=='renewOffered')return;if(yes){r.status='active';r.renewalCount++;createSchedule(r,true);}else r.status='active';r.renewAnswered=true;}else{if(r.status!=='offered')return;r.status=yes?'active':'declined';if(yes)createSchedule(r,false);}const m=mailItems().find(x=>x.varietyRegular252Id===r.id&&!!x.varietyRegular252Renew===!!renew);if(m)m.varietyRegular252Answered=true;save();showMailbox();}
  function onMailbox(){if(!mailSelected)return;const m=mailItems().find(x=>x.id===mailSelected);if(!m?.varietyRegular252Id||m.varietyRegular252Answered)return;const r=R().find(x=>x.id===m.varietyRegular252Id);if(!r||!(m.varietyRegular252Renew?r.status==='renewOffered':r.status==='offered'))return;const root=document.querySelector('.maildetail');if(!root||root.querySelector('#regular252-controls'))return;const row=document.createElement('div');row.id='regular252-controls';row.style.cssText='display:flex;gap:12px;flex-wrap:wrap;margin:14px 0';for(const [label,yes] of [['承諾',true],['辞退',false]]){const b=document.createElement('button');b.textContent=label;b.className=yes?'primary':'';b.onclick=()=>answer(r,yes,!!m.varietyRegular252Renew);row.append(b);}root.append(row);}
  const oldMailbox=showMailbox;showMailbox=function(){const v=oldMailbox.apply(this,arguments);try{onMailbox()}catch(e){console.error('regular mailbox',e)}return v;};
