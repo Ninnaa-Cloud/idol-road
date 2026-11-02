@@ -3340,6 +3340,18 @@ function irAgeAt(m,date){const b=String(m?.birthDate||m?.birthday||'').replace(/
 function irAgeRestricted(m,date,start,end){const age=irAgeAt(m,date);if(age===null)return false;const limit=age<15?20:age<18?22:24;if(limit===24)return false;const a=Number(start),b=Number(end);if(!Number.isFinite(a)||!Number.isFinite(b))return false;const until=b<=a?b+24:b;for(let h=a;h<until;h+=0.25){const clock=((h%24)+24)%24;if(clock<5||clock>=limit)return true}return false}
 function irAgeEligible(g,date,start,end){return (g?.members||[]).filter(m=>!irAgeRestricted(m,date,start,end))}
 function irAgeConfirm(g,date,start,end,star){const blocked=(g?.members||[]).filter(m=>irAgeRestricted(m,date,start,end));if(!blocked.length)return true;const label=m=>m.stageName||m.name||'メンバー';const names=blocked.map(m=>`${label(m)}（${irAgeAt(m,date)}歳）`).join('、');if(star&&blocked.some(m=>String(m.id)===String(star))){alert('年齢制限により主役の'+names+'は参加できません。開催時間を変更してください。');return false}if(!irAgeEligible(g,date,start,end).length){alert('年齢制限により参加可能なメンバーがいません。開催時間を変更してください。');return false}return confirm('【年齢制限】\n'+names+'は'+start+':00〜'+end+':00の活動に参加できません。\n対象メンバーを除いて進めますか？\n（キャンセルで戻る）')}
+// v296: confirm future-date age eligibility before accepting a scheduled job.
+function ir296AgeConfirmMembers(g,date,start,end,memberId){
+ if(!g)return true;
+ const members=memberId!=null?(g.members||[]).filter(m=>String(m.id)===String(memberId)):(g.members||[]);
+ if(!members.length){alert('出演対象メンバーが見つかりません。');return false;}
+ const blocked=members.filter(m=>irAgeRestricted(m,date,start,end));
+ if(!blocked.length)return true;
+ const details=blocked.map(m=>`${m.stageName||m.name||'メンバー'}（${irAgeAt(m,date)??'年齢不明'}歳）`).join('、');
+ const hours=`${date} ${start}:00〜${end}:00`;
+ if(blocked.length===members.length){alert(`【年齢制限】${hours} の出演可能メンバーがいません。\n${details}`);return false;}
+ return confirm(`【年齢制限】${hours}\n${details}は出演できません。\n残りのメンバーだけで承諾しますか？`);
+}
 // Make shared age checks accessible to external-live invitations and venue inquiries.
 window.irAgeConfirm=irAgeConfirm;
 window.irAgeRestricted=irAgeRestricted;
@@ -4245,10 +4257,54 @@ const CATALOG=[
  {name:'FNS歌謡祭 夏',station:'フジテレビ',tier:'特番',min:6500,kind:'live',month:7},
  {name:'FNS歌謡祭 冬',station:'フジテレビ',tier:'特番',min:7000,kind:'live',month:12},
  {name:'ミュージックステーション SUPER LIVE',station:'テレビ朝日',tier:'特番',min:7200,kind:'live',month:12},
- {name:'NHK紅白歌合戦',station:'NHK',tier:'特番',min:7700,kind:'live',month:12},
+ {name:'NHK紅白歌合戦',station:'NHK',tier:'特番',min:7700,kind:'live',month:10},
  {name:'CDTV年越しライブ',station:'TBS',tier:'特番',min:7000,kind:'live',month:12}
 ];
 const plus=(date,n)=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+n);return dateKey(d)};
+// v295: enforce in-game music television broadcast calendars.
+const ir295Weekday=(y,m,d,day)=>{const t=new Date(y,m-1,d,12);const offset=(day-t.getDay()+7)%7;t.setDate(t.getDate()+offset);return dateKey(t)};
+const ir295LastWeekday=(y,m,day)=>{const t=new Date(y,m,0,12);t.setDate(t.getDate()-(t.getDay()-day+7)%7);return dateKey(t)};
+const ir295Date=(name,tier,received,fallback)=>{
+ const y=Number(String(received).slice(0,4));if(!Number.isInteger(y)||y<2000)return fallback;
+ if(name==='NHK紅白歌合戦')return `${y}-12-31`;
+ if(name==='CDTV年越しライブ')return `${y+1}-01-01`;
+ if(name==='ミュージックステーション SUPER LIVE')return ir295LastWeekday(y,12,6);
+ if(name==='音楽の日')return ir295Weekday(y,7,8,6); // second Saturday of July
+ if(name==='FNS歌謡祭 夏')return ir295Weekday(y,7,15,0); // third Sunday of July
+ if(name==='FNS歌謡祭 冬')return ir295Weekday(y,12,8,0); // second Sunday of December
+ if(name==='ミュージックステーション'){
+  const d=new Date(String(received)+'T12:00:00');d.setDate(d.getDate()+12);
+  return ir295Weekday(d.getFullYear(),d.getMonth()+1,d.getDate(),5);
+ }
+ if(tier==='特番'){
+  const month=/夏|音楽の日/.test(name)?7:/冬/.test(name)?12:Number(String(received).slice(5,7));
+  // Last Saturday in each special's advertised month, unless it is already past.
+  let d=ir295LastWeekday(y,month,6);
+  if(d<=received){const tmp=new Date(String(received)+'T12:00:00');tmp.setDate(tmp.getDate()+12);d=ir295Weekday(tmp.getFullYear(),tmp.getMonth()+1,tmp.getDate(),6)}
+  return d;
+ }
+ return fallback;
+};
+const ir295RefreshMail=(r,previous)=>{
+ const mails=Array.isArray(state.mail)?state.mail:typeof mailItems==='function'?mailItems():[];
+ for(const m of mails){if(String(m.musicTVId)!==String(r.id)||m.folder!=='inbox'||typeof m.body!=='string')continue;
+  if(previous&&previous!==r.broadcastDate)m.body=m.body.replaceAll(previous,r.broadcastDate);
+  if(r.name==='CDTV年越しライブ')m.body=m.body.replace('予定時間帯：23:00-24:00','予定時間帯：00:00-02:00');
+ }
+};
+const ir295NormalizeExisting=()=>{
+ const now=today();let changed=false;
+ for(const r of records()){
+  if(!r||!['offered','accepted'].includes(r.status)||!r.broadcastDate||!r.received)continue;
+  const expected=ir295Date(r.name,r.tier,r.received,r.broadcastDate);
+  if(r.name==='CDTV年越しライブ'&&r.slot==='23:00-24:00'&&expected>=now){r.slot='00:00-02:00';ir295RefreshMail(r,null);changed=true;}
+  if(expected!==r.broadcastDate && expected>=now){const old=r.broadcastDate;r.broadcastDate=expected;
+   if(r.status==='accepted')schedule(r);
+   ir295RefreshMail(r,old);changed=true;
+  }
+ }
+ if(changed)save();
+};
 const records=()=>{state.musicTV??=[];return state.musicTV};
 const groups=()=>state.groups||[];
 const songList=g=> (state.productions||[]).filter(x=>String(x.groupId)===String(g.id)&& (x.songDone===true&&x.published===true));
@@ -4276,23 +4332,23 @@ function invite(g,show,opts={}){
  if(!track)return null;
  const kind=opts.kind||catalog.kind;
  const recordDate=kind==='record'||kind==='feature'&&opts.recordFeature!==false?opts.recordDate||plus(today(),12):null;
- const broadcastDate=opts.broadcastDate||plus(today(),kind==='live'?12:25);
- const r={id:id(),groupId:g.id,groupName:g.name,name:catalog.name,station:catalog.station,tier:catalog.tier,kind,trackId:track.id,trackTitle:track.title,received:today(),deadline:plus(today(),7),recordDate,broadcastDate,status:'offered',slot:opts.slot|| (catalog.name==='CDTV年越しライブ'?'23:00-24:00':catalog.tier==='特番'?'18:00-20:00':kind==='live'?'19:00-21:00':'13:00-15:00'),participants:[],fameGain:0};
+ const broadcastDate=ir295Date(catalog.name,catalog.tier,today(),opts.broadcastDate||plus(today(),kind==='live'?12:25));
+ const r={id:id(),groupId:g.id,groupName:g.name,name:catalog.name,station:catalog.station,tier:catalog.tier,kind,trackId:track.id,trackTitle:track.title,received:today(),deadline:plus(today(),7),recordDate,broadcastDate,status:'offered',slot:opts.slot|| (catalog.name==='CDTV年越しライブ'?'00:00-02:00':catalog.tier==='特番'?'18:00-20:00':kind==='live'?'19:00-21:00':'13:00-15:00'),participants:[],fameGain:0};
  r.fee=Number.isFinite(Number(opts.fee))&&opts.fee!==undefined?Number(opts.fee):chooseFee(r);r.feePaid=false;
  records().push(r);
  const when=recordDate?`収録日：${recordDate}\n放送日：${broadcastDate}`:`出演・放送日：${broadcastDate}`;
  addMail('inbox',`【出演依頼】${catalog.name}／${g.name}`,`${state.agency} ご担当者様\n\nいつもお世話になっております。${catalog.station} ${catalog.name}制作担当です。\n\n${g.name}様に、番組へのご出演をご相談したくご連絡いたしました。\n\n出演形式：${kind==='live'?'生放送':kind==='feature'?'アーティスト特集':'事前収録'}\n披露・紹介予定曲（番組指定）：${track.title}\n${when}\n予定時間帯：${r.slot}\n${feeText(r)}\n\n回答期限：${r.deadline}（受信から7日）\n期限までにご承諾またはご辞退をお願いいたします。\n\n${catalog.station} ${catalog.name} 制作担当`,catalog.station,{musicTVId:r.id});
  notice(`${catalog.name}から出演依頼が届きました。回答期限：${r.deadline}`);save();return r;
 }
-function answer(r,accept){if(!r||r.status!=='offered'||today()>r.deadline)return false;if(accept){const slot=String(r.slot||'').match(/(\d+):(\d+)-(\d+):(\d+)/);const a=slot?+slot[1]+slot[2]/60:0,b=slot?+slot[3]+slot[4]/60:24;const conflicts=IDOL_BOOKING.conflict({id:'music:'+r.id,date:r.recordDate||r.broadcastDate,start:Math.max(0,a-1),end:b,groupId:String(r.groupId),memberId:null});if(!IDOL_BOOKING.warn(conflicts))return false;r.bookingOrder=IDOL_BOOKING.order();}r.status=accept?'accepted':'declined';r.answered=today();if(accept)schedule(r);addMail('sent',`Re: ${r.name} 出演依頼`,`${r.station} ご担当者様\n\nお世話になっております。${state.agency}です。\n${r.groupName}の${r.name}出演について、${accept?'承諾いたします。よろしくお願いいたします。':'誠に恐縮ですが今回は辞退いたします。'}\n\n${state.agency}`,r.station,{musicTVId:r.id});save();return true;}
-function ageAllowed(m,slot){const age=memberAge(m.birthDate||m.birth||m.birthday);if(!Number.isFinite(age))return false;const start=Number(slot.split(':')[0]);const endPart=slot.split('-')[1]||'15:00';const end=Number(endPart.split(':')[0])+(Number(endPart.split(':')[1])||0)/60;const limit=age<15?20:age<18?22:29;return start<limit&&end<=limit;}
+function answer(r,accept){if(!r||r.status!=='offered'||today()>r.deadline)return false;if(accept){const slot=String(r.slot||'').match(/(\d+):(\d+)-(\d+):(\d+)/);const a=slot?+slot[1]+slot[2]/60:0,b=slot?+slot[3]+slot[4]/60:24;const performanceDate=r.recordDate||r.broadcastDate;const g=groups().find(x=>String(x.id)===String(r.groupId));if(g&&typeof irAgeConfirm==='function'&&!irAgeConfirm(g,performanceDate,Math.max(0,a-1),b))return false;const conflicts=IDOL_BOOKING.conflict({id:'music:'+r.id,date:performanceDate,start:Math.max(0,a-1),end:b,groupId:String(r.groupId),memberId:null});if(!IDOL_BOOKING.warn(conflicts))return false;r.bookingOrder=IDOL_BOOKING.order();}r.status=accept?'accepted':'declined';r.answered=today();if(accept)schedule(r);addMail('sent',`Re: ${r.name} 出演依頼`,`${r.station} ご担当者様\n\nお世話になっております。${state.agency}です。\n${r.groupName}の${r.name}出演について、${accept?'承諾いたします。よろしくお願いいたします。':'誠に恐縮ですが今回は辞退いたします。'}\n\n${state.agency}`,r.station,{musicTVId:r.id});save();return true;}
+function ageAllowed(m,slot,date){const parts=String(slot||'').match(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/);if(!parts)return false;const start=+parts[1]+(+parts[2])/60,end=+parts[3]+(+parts[4])/60;return typeof irAgeRestricted==='function'?!irAgeRestricted(m,date||today(),Math.max(0,start-1),end):false;}
 function musicWorkWindow(r){const x=String(r?.slot||'').match(/(\d{1,2}):(\d{2})\s*[-〜～]\s*(\d{1,2}):(\d{2})/);if(!x)return [0,24];const a=+x[1]+(+x[2])/60;const b=+x[3]+(+x[4])/60;return [Math.max(0,a-1),b>a?b:b+24];}
 function travel(r){
  if(!r||r.status!=='accepted'||today()!==(r.recordDate||r.broadcastDate)||r.travelDone)return false;
  const g=groups().find(x=>String(x.id)===String(r.groupId));if(!g){msg('所属グループが見つかりません。');return false;}
  const duration=r.kind==='feature'?2:3;
  const [workStart,workEnd]=musicWorkWindow(r);
- const eligible=(g.members||[]).filter(m=>ageAllowed(m,r.slot)&&memberDayHours(m)>=duration+1&&IDOL_BOOKING.participates(m,r.groupId,today(),workStart,workEnd,'music:'+r.id));
+ const eligible=(g.members||[]).filter(m=>ageAllowed(m,r.slot,r.recordDate||r.broadcastDate)&&memberDayHours(m)>=duration+1&&IDOL_BOOKING.participates(m,r.groupId,today(),workStart,workEnd,'music:'+r.id));
  const excluded=(g.members||[]).filter(m=>!eligible.includes(m));
  if(!eligible.length){msg('移動1時間と出演時間、または年齢制限のため参加可能なメンバーがいません。');return false;}
  if(excluded.length&&!confirm(`移動・出演できないメンバーが${excluded.length}人います。参加可能な${eligible.length}人で移動しますか？`))return false;
@@ -4305,7 +4361,7 @@ function execute(r){if(!r||r.status!=='accepted'||today()!==(r.recordDate||r.bro
  const g=groups().find(x=>String(x.id)===String(r.groupId));if(!g){msg('所属グループが見つかりません。');return false;}
  const duration=r.kind==='feature'?2:3;
  const [workStart,workEnd]=musicWorkWindow(r);
- const eligible=(g.members||[]).filter(m=>r.travelMemberIds?.includes(String(m.id))&&ageAllowed(m,r.slot)&&memberDayHours(m)>=duration&&IDOL_BOOKING.participates(m,r.groupId,today(),workStart,workEnd,'music:'+r.id));
+ const eligible=(g.members||[]).filter(m=>r.travelMemberIds?.includes(String(m.id))&&ageAllowed(m,r.slot,r.recordDate||r.broadcastDate)&&memberDayHours(m)>=duration&&IDOL_BOOKING.participates(m,r.groupId,today(),workStart,workEnd,'music:'+r.id));
  if(!eligible.length){msg('移動済みメンバーに出演できる残り時間がありません。');return false;}
  const absent=(r.travelMemberIds||[]).filter(id=>!eligible.some(m=>String(m.id)===id));
  if(absent.length&&!confirm(`移動済みメンバーのうち${absent.length}人が出演できません。残りのメンバーで実行しますか？`))return false;
@@ -4402,6 +4458,7 @@ function generate(){
 }
 const oldAddDay=addDay;addDay=function(){onLeavingDay();oldAddDay();onEnteringDay();generate();};
 function onEnteringDay(){for(const r of records()){if(r.status==='recorded'&&r.broadcastDate===today())applyBroadcast(r);if(r.status==='accepted'&&!r.recordDate&&r.kind==='feature'&&r.broadcastDate===today()){r.status='recorded';applyBroadcast(r);}}save();}
+ir295NormalizeExisting();
 const oldRender=render;render=function(){oldRender();if(state.tab==='活動'&&state.sub==='音楽番組')renderMusic();};
 const oldShowMailbox=showMailbox;showMailbox=function(){oldShowMailbox();if(!mailSelected)return;const m=mailItems().find(x=>x.id===mailSelected);if(!m?.musicTVId||m.folder!=='inbox')return;const r=records().find(x=>x.id===m.musicTVId);if(!r)return;const detail=el('drawerBody').querySelector('.maildetail');if(!detail)return;const p=document.createElement('p');p.textContent=`回答期限：${r.deadline} ／ 状態：${({offered:'回答待ち',accepted:'承諾済み',declined:'辞退済み',expired:'期限切れ',missed:'欠席',recorded:'収録済み',broadcasted:'放送済み'})[r.status]||r.status}`;detail.append(p);
  if(r.status==='offered'&&today()<=r.deadline){const actions=document.createElement('div');actions.style.cssText='display:flex;gap:10px;margin:12px 0';for(const [label,yes] of [['承諾',true],['辞退',false]]){const b=document.createElement('button');b.textContent=label;if(yes)b.className='primary';b.onclick=()=>{if(answer(r,yes)){b.disabled=true;detail.querySelectorAll('button').forEach(x=>x.disabled=true);p.textContent='状態：'+(yes?'承諾済み（予定を登録しました）':'辞退済み');}};actions.append(b)}detail.append(actions)}};
@@ -4467,7 +4524,7 @@ function invite(g,show,member=null,opts={}){
  mail('inbox',`【出演のご依頼】${r.name}／${who}`,`${state.agency} ご担当者様\n\n突然のご連絡失礼いたします。${r.station}「${r.name}」制作担当でございます。\n\nこのたび、弊番組の「${r.topic}」企画に、${who}をご出演者としてお迎えしたく、ご連絡いたしました。\n\n【出演概要】\n番組名：${r.name}\n放送局・配信元：${r.station}\n出演対象：${who}\n企画内容：${r.topic}\n${live?'生放送':'収録'}日時：${recordDate||broadcastDate} ${slot}（${duration}時間）\n放送・配信予定日：${broadcastDate}\n出演料（事務所受取・税込）：${money(r.fee)}\n回答期限：${r.deadline}\n\nご多忙のところ恐れ入りますが、期日までにご出演の可否をご回答いただけますと幸いです。\n\n何卒よろしくお願い申し上げます。\n\n${r.station}\n「${r.name}」番組制作担当`,r.station,{varietyTVId:r.id});
  notice(`${r.name}から${who}への出演依頼が届きました。`);save();return r;
 }
-function answer(r,yes){if(!r||r.status!=='offered'||todayKey()>r.deadline)return false;if(yes){const z=String(r.slot||'').match(/(\d+):(\d+)-(\d+):(\d+)/);const a=z?+z[1]:0,b=z?+z[3]:24;if(!IDOL_BOOKING.warn(IDOL_BOOKING.conflict({id:'variety:'+r.id,date:r.recordDate||r.broadcastDate,start:a,end:b,groupId:String(r.groupId),memberId:r.mode==='solo'?String(r.memberId):null})))return false;r.bookingOrder=IDOL_BOOKING.order();}r.status=yes?'accepted':'declined';r.answered=todayKey();if(yes)schedule(r);mail('sent',`Re: ${r.name} 出演依頼`,`${r.station} 番組制作ご担当者様\n\nお世話になっております。${state.agency}です。\n${r.name}への出演につきまして、${yes?'承諾いたします。何卒よろしくお願いいたします。':'誠に恐縮ですが、今回は辞退いたします。'}\n\n${state.agency}`,r.station,{varietyTVId:r.id});save();return true}
+function answer(r,yes){if(!r||r.status!=='offered'||todayKey()>r.deadline)return false;if(yes){const z=String(r.slot||'').match(/(\d+):(\d+)-(\d+):(\d+)/);const a=z?+z[1]+(+z[2])/60:0,b=z?+z[3]+(+z[4])/60:24;const g=(state.groups||[]).find(g=>String(g.id)===String(r.groupId));if(!ir296AgeConfirmMembers(g,r.recordDate||r.broadcastDate,Math.max(0,a-1),b,r.mode==='solo'?r.memberId:null))return false;if(!IDOL_BOOKING.warn(IDOL_BOOKING.conflict({id:'variety:'+r.id,date:r.recordDate||r.broadcastDate,start:a,end:b,groupId:String(r.groupId),memberId:r.mode==='solo'?String(r.memberId):null})))return false;r.bookingOrder=IDOL_BOOKING.order();}r.status=yes?'accepted':'declined';r.answered=todayKey();if(yes)schedule(r);mail('sent',`Re: ${r.name} 出演依頼`,`${r.station} 番組制作ご担当者様\n\nお世話になっております。${state.agency}です。\n${r.name}への出演につきまして、${yes?'承諾いたします。何卒よろしくお願いいたします。':'誠に恐縮ですが、今回は辞退いたします。'}\n\n${state.agency}`,r.station,{varietyTVId:r.id});save();return true}
 function pay(r){if(r.feePaid)return;state.agencyFunds=(Number.isFinite(state.agencyFunds)?state.agencyFunds:50000000)+r.fee;r.feePaid=true;r.feePaidDate=todayKey();if(Number(r.fee)>0)window.IDOL_ACCOUNTING?.record(Number(r.fee),r.groupId,r.mode==='solo'?(r.memberId??null):null,r.mode==='solo'?'personal':'variety_tv','バラエティ 出演料');notice(`${r.name}の出演料 ${money(r.fee)} が入金されました。`)}
 const varietyBookingWindow=(r,includeTravel=false)=>{const z=String(r.slot||'').match(/(\d{1,2}):(\d{2})\s*[-〜～]\s*(\d{1,2}):(\d{2})/);const a=z?Number(z[1])+Number(z[2])/60:0;const b=z?Number(z[3])+Number(z[4])/60:24;return {start:a-(includeTravel?1:0),end:b};};
 function travel(r){if(r.status!=='accepted'||(r.recordDate||r.broadcastDate)!==todayKey()||r.travelDone)return false;const g=groups().find(x=>String(x.id)===String(r.groupId));if(!g)return false;const m=r.memberId?(g.members||[]).find(x=>memberId(x)===r.memberId):null;if(r.memberId&&!m)return false;const list=eligible(g,m,r.slot,r.duration).filter(x=>IDOL_BOOKING.participates(x,r.groupId,todayKey(),varietyBookingWindow(r,true).start,varietyBookingWindow(r,true).end,'variety:'+r.id));if(!list.length){msg('年齢制限またはメンバーの残り活動時間により出演できません。');return false}if(!m&&list.length<(g.members||[]).length&&!confirm(`出演可能な${list.length}名だけで移動しますか？`))return false;for(const x of list)useMemberHours(x,1);r.travelDone=true;r.travelDate=todayKey();r.travelMemberIds=list.map(memberId);notice(`${r.name}の会場へ移動しました（各1時間）。`);save();render();return true}
@@ -4571,7 +4628,7 @@ function produce(g,m,type,lead=false,options={}){const t=TYPES[type];if(!g||!m||
  const lines=shoot.map(s=>`${s.date} ${s.start}:00〜${s.end}:00（${s.duration}時間）`).join('\n');
  const body=`${state.agency||'芸能事務所'} ご担当者様\n\n突然のご連絡失礼いたします。${sender} 制作担当でございます。\n\nこのたび弊社制作の${type==='film'?'映画':'ドラマ'}『${name}』にて、${g.name}所属の${w.memberName}様にご出演いただきたくご連絡いたしました。\n\n【作品概要】\n作品名：${name}\nジャンル：${genre}\nあらすじ：${genre}をテーマに、${role}が大切な人との関係や自分の未来に向き合う物語です。\n出演区分：${lead?'主演':'主演以外'}\n役名：${roleName}\n役柄：${role}\n\n【撮影・${type==='film'?'公開':'放送'}概要】\n撮影期間：${start}〜${end}\n撮影回数：${shoot.length}日\n${type==='film'?'公開予定日':'初回放送日'}：${release}\n${type==='film'?'':'放送：全'+episodes+'話・週1回'}\n総出演料：${fmt(w.fee)}（全撮影完了後一括）\n回答期限：${w.deadline}\n\n【全撮影日程】\n${lines}\n\nご検討のうえ、期日までにご回答いただけますと幸いです。\n\n何卒よろしくお願い申し上げます。\n${sender} 制作担当`;
  mailItems().push({id:id(),folder:'inbox',subject:`【出演のご依頼】${type==='film'?'映画':'ドラマ'}『${name}』／${w.memberName}様`,body,date:date(),from:sender,read:false,dramaFilmId:w.id});notice(`${w.memberName}への『${name}』出演依頼が届きました。`);save();return w}
-function respond(w,yes){if(w.status!=='offered'||date()>w.deadline)return false;const g=(state.groups||[]).find(g=>String(g.id)===String(w.groupId)),m=g?.members?.find(m=>String(m.id)===String(w.memberId));if(yes&&!m){msg('対象メンバーが見つかりません。');return false}if(yes){const clashes=w.slots.flatMap(x=>IDOL_BOOKING.conflict({id:'drama:'+w.id+':'+x.date,date:x.date,start:x.start,end:x.end,groupId:String(w.groupId),memberId:String(w.memberId)}));if(!IDOL_BOOKING.warn(clashes))return false;w.bookingOrder=IDOL_BOOKING.order();}w.status=yes?'accepted':'declined';if(yes){state.schedule??=[];for(const s of w.slots)state.schedule.push({id:w.id+':'+s.date,dramaFilmId:w.id,date:s.date,title:`【撮影】${w.groupName}／${w.memberName}／${w.title}`,done:true});for(let i=0;i<w.episodes;i++){const d=add(w.release,i*7);state.schedule.push({id:w.id+':release:'+i,dramaFilmId:w.id,date:d,title:`【${w.type==='film'?'映画公開':'ドラマ放送'}】${w.groupName}／${w.memberName}／${w.title}${w.type==='film'?'':` 第${i+1}話`}`,done:true})}}
+function respond(w,yes){if(w.status!=='offered'||date()>w.deadline)return false;const g=(state.groups||[]).find(g=>String(g.id)===String(w.groupId)),m=g?.members?.find(m=>String(m.id)===String(w.memberId));if(yes&&!m){msg('対象メンバーが見つかりません。');return false}if(yes){for(const x of w.slots||[]){if(!ir296AgeConfirmMembers(g,x.date,Math.max(0,Number(x.start)-1),Number(x.end),w.memberId))return false;}const clashes=w.slots.flatMap(x=>IDOL_BOOKING.conflict({id:'drama:'+w.id+':'+x.date,date:x.date,start:x.start,end:x.end,groupId:String(w.groupId),memberId:String(w.memberId)}));if(!IDOL_BOOKING.warn(clashes))return false;w.bookingOrder=IDOL_BOOKING.order();}w.status=yes?'accepted':'declined';if(yes){state.schedule??=[];for(const s of w.slots)state.schedule.push({id:w.id+':'+s.date,dramaFilmId:w.id,date:s.date,title:`【撮影】${w.groupName}／${w.memberName}／${w.title}`,done:true});for(let i=0;i<w.episodes;i++){const d=add(w.release,i*7);state.schedule.push({id:w.id+':release:'+i,dramaFilmId:w.id,date:d,title:`【${w.type==='film'?'映画公開':'ドラマ放送'}】${w.groupName}／${w.memberName}／${w.title}${w.type==='film'?'':` 第${i+1}話`}`,done:true})}}
  mailItems().push({id:id(),folder:'sent',subject:`Re: 『${w.title}』出演のご相談`,body:`${w.sender} ご担当者様\n\nお世話になっております。${state.agency}です。\n『${w.title}』への出演につきまして、${yes?'承諾いたします。':'今回は辞退いたします。'}\n\n何卒よろしくお願いいたします。`,date:date(),to:w.sender,read:true,dramaFilmId:w.id});save();render();return true}
 function actor(w){const g=(state.groups||[]).find(x=>String(x.id)===String(w.groupId));return g?.members?.find(x=>String(x.id)===String(w.memberId))}
 function travel(w){
@@ -5596,6 +5653,8 @@ function answer(id,yes){
   for(const s of slots){
    const start=typeof IDOL_BOOKING!=='undefined'?IDOL_BOOKING.hour(s.time):Number(String(s.time).split(':')[0]);
    const end=start+Number(s.duration||0)/60;
+   const ageGroup=(state.groups||[]).find(g=>String(g.id)===String(i.groupId));
+   if(!ir296AgeConfirmMembers(ageGroup,s.date,Math.max(0,start-1),end,null))return;
    const clashes=typeof IDOL_BOOKING!=='undefined'&&typeof IDOL_BOOKING.conflict==='function'
      ? IDOL_BOOKING.conflict({id:'festival:'+s.id,groupId:i.groupId,date:s.date,start:Math.max(0,start-1),end})
      : [];
